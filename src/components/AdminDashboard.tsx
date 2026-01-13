@@ -131,41 +131,53 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       
       // Fetch dashboard stats
       if (activeSection === 'Dashboard') {
-        const statsData = await adminService.getDashboardStats();
+        const response = await adminService.getDashboardStats();
+        const statsData = response.data || response;
+        
+        // Calculate enrollment counts from stats
+        let enrolledCount = 0;
+        let pendingCount = 0;
+        if (statsData.enrollmentStats && Array.isArray(statsData.enrollmentStats)) {
+          const approved = statsData.enrollmentStats.find((s: any) => s.status === 'Approved');
+          const pending = statsData.enrollmentStats.find((s: any) => s.status === 'Pending');
+          enrolledCount = approved?.count || 0;
+          pendingCount = pending?.count || 0;
+        }
+        
         setStats([
           { 
             label: 'Total Students', 
-            value: statsData.total_students?.toString() || '0', 
+            value: (statsData.totalStudents || 0).toString(), 
             icon: Users, 
             color: 'from-blue-500 to-blue-600',
-            change: statsData.students_change || '+0%'
+            change: '+0%'
           },
           { 
             label: 'Enrolled', 
-            value: statsData.enrolled_students?.toString() || '0', 
+            value: enrolledCount.toString(), 
             icon: CheckCircle, 
             color: 'from-green-500 to-green-600',
-            change: statsData.enrolled_change || '+0%'
+            change: '+0%'
           },
           { 
             label: 'Pending', 
-            value: statsData.pending_enrollments?.toString() || '0', 
+            value: pendingCount.toString(), 
             icon: Clock, 
             color: 'from-orange-500 to-orange-600',
-            change: statsData.pending_change || '+0'
+            change: '+0'
           },
           { 
             label: 'Active Courses', 
-            value: statsData.active_courses?.toString() || '0', 
+            value: '0', 
             icon: BookOpen, 
             color: 'from-purple-500 to-purple-600',
-            change: statsData.courses_change || '+0'
+            change: '+0'
           },
         ]);
 
         // Fetch recent enrollments (approved)
         const enrollmentsData = await adminService.getAllEnrollments({ status: 'Approved' });
-        const recent = enrollmentsData.enrollments?.slice(0, 10).map((e: any) => ({
+        const recent = enrollmentsData.data?.slice(0, 10).map((e: any) => ({
           name: `${e.student?.first_name || ''} ${e.student?.last_name || ''}`.trim(),
           course: e.student?.course || 'N/A',
           status: e.status,
@@ -177,7 +189,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       // Fetch pending enrollments
       if (activeSection === 'Dashboard' || activeSection === 'Enrollment Request') {
         const pendingData = await adminService.getAllEnrollments({ status: 'Pending' });
-        const pending = pendingData.enrollments?.map((e: any) => ({
+        const pending = pendingData.data?.map((e: any) => ({
           id: `#E-${e.id}`,
           enrollmentId: e.id,
           student: `${e.student?.first_name || ''} ${e.student?.last_name || ''}`.trim(),
@@ -195,7 +207,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       // Fetch transactions
       if (activeSection === 'Dashboard' || activeSection === 'Transactions') {
         const transactionsData = await transactionService.getAllTransactions();
-        const txnList = transactionsData.transactions?.map((t: any) => ({
+        const txnList = transactionsData.data?.map((t: any) => ({
           id: `TXN-${String(t.id).padStart(4, '0')}`,
           transactionId: t.id,
           student: `${t.enrollment?.student?.first_name || ''} ${t.enrollment?.student?.last_name || ''}`.trim(),
@@ -212,7 +224,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       // Fetch students
       if (activeSection === 'Manage Students' || activeSection === 'SHS Grades' || activeSection === 'College Grades') {
         const studentsData = await adminService.getAllStudents();
-        const studentList = studentsData.students?.map((s: any) => ({
+        const studentList = studentsData.data?.map((s: any) => ({
           id: s.student_id,
           studentId: s.id,
           name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),
