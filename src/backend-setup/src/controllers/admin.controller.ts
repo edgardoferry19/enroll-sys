@@ -1,0 +1,443 @@
+import { Response } from 'express';
+import { query, run } from '../database/connection';
+import { AuthRequest } from '../middleware/auth.middleware';
+import bcrypt from 'bcryptjs';
+
+export const getAllStudents = async (req: AuthRequest, res: Response) => {
+  try {
+    const { student_type, status, search } = req.query;
+
+    let sql = `
+      SELECT s.*, u.username, u.email 
+      FROM students s
+      LEFT JOIN users u ON s.user_id = u.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (student_type) {
+      sql += ' AND s.student_type = ?';
+      params.push(student_type);
+    }
+
+    if (status) {
+      sql += ' AND s.status = ?';
+      params.push(status);
+    }
+
+    if (search) {
+      sql += ` AND (s.student_id LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY s.created_at DESC';
+
+    const students = await query(sql, params);
+
+    res.json({
+      success: true,
+      data: students
+    });
+  } catch (error) {
+    console.error('Get all students error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const getStudentById = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const students = await query(
+      `SELECT s.*, u.username, u.email 
+       FROM students s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.id = ?`,
+      [id]
+    );
+
+    if (students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Get student's enrollments
+    const enrollments = await query(
+      `SELECT e.*, 
+        COUNT(es.id) as subject_count,
+        SUM(sub.units) as total_units
+       FROM enrollments e
+       LEFT JOIN enrollment_subjects es ON e.id = es.enrollment_id
+       LEFT JOIN subjects sub ON es.subject_id = sub.id
+       WHERE e.student_id = ?
+       GROUP BY e.id
+       ORDER BY e.created_at DESC`,
+      [id]
+    );
+
+    // Get student's documents
+    const documents = await query(
+      'SELECT * FROM documents WHERE student_id = ? ORDER BY upload_date DESC',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        student: students[0],
+        enrollments,
+        documents
+      }
+    });
+  } catch (error) {
+    console.error('Get student by ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const createStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      username,
+      password,
+      email,
+      student_id,
+      first_name,
+      middle_name,
+      last_name,
+      suffix,
+      student_type,
+      course,
+      year_level,
+      contact_number,
+      address,
+      birth_date,
+      gender
+    } = req.body;
+
+    // Create user account
+    const hashedPassword = await bcrypt.hash(password || 'student123', 10);
+    
+    const userResult = await run(
+      'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
+      [username || student_id, hashedPassword, email, 'student']
+    );
+
+    const userId = userResult.lastInsertRowid;
+
+    // Create student record
+    const studentResult = await run(
+      `INSERT INTO students 
+        (user_id, student_id, first_name, middle_name, last_name, suffix, 
+         student_type, course, year_level, contact_number, address, birth_date, gender)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, student_id, first_name, middle_name, last_name, suffix,
+       student_type, course, year_level, contact_number, address, birth_date, gender]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Student created successfully',
+      data: {
+        id: studentResult.lastInsertRowid,
+        student_id
+      }
+    });
+  } catch (error) {
+    console.error('Create student error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const updateStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      first_name,
+      middle_name,
+      last_name,
+      suffix,
+      student_type,
+      course,
+      year_level,
+      contact_number,
+      address,
+      birth_date,
+      gender,
+      status
+    } = req.body;
+
+    await run(
+      `UPDATE students SET 
+        first_name = ?,
+        middle_name = ?,
+        last_name = ?,
+        suffix = ?,
+        student_type = ?,
+        course = ?,
+        year_level = ?,
+        contact_number = ?,
+        address = ?,
+        birth_date = ?,
+        gender = ?,
+        status = ?,
+        updated_at = datetime('now')
+      WHERE id = ?`,
+      [first_name, middle_name, last_name, suffix, student_type, course,
+       year_level, contact_number, address, birth_date, gender, status, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Student updated successfully'
+    });
+  } catch (error) {
+    console.error('Update student error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const deleteStudent = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Get user_id first
+    const students = await query(
+      'SELECT user_id FROM students WHERE id = ?',
+      [id]
+    );
+
+    if (students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Delete user (cascade will delete student)
+    await run('DELETE FROM users WHERE id = ?', [students[0].user_id]);
+
+    res.json({
+      success: true,
+      message: 'Student deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete student error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const getAllEnrollments = async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, school_year, semester } = req.query;
+
+    let sql = `
+      SELECT e.*, 
+        s.student_id, s.first_name, s.middle_name, s.last_name,
+        s.course, s.year_level,
+        COUNT(es.id) as subject_count,
+        SUM(sub.units) as total_units
+      FROM enrollments e
+      JOIN students s ON e.student_id = s.id
+      LEFT JOIN enrollment_subjects es ON e.id = es.enrollment_id
+      LEFT JOIN subjects sub ON es.subject_id = sub.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (status) {
+      sql += ' AND e.status = ?';
+      params.push(status);
+    }
+
+    if (school_year) {
+      sql += ' AND e.school_year = ?';
+      params.push(school_year);
+    }
+
+    if (semester) {
+      sql += ' AND e.semester = ?';
+      params.push(semester);
+    }
+
+    sql += ' GROUP BY e.id ORDER BY e.created_at DESC';
+
+    const enrollments = await query(sql, params);
+
+    res.json({
+      success: true,
+      data: enrollments
+    });
+  } catch (error) {
+    console.error('Get all enrollments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const getEnrollmentById = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const enrollments = await query(
+      `SELECT e.*, 
+        s.student_id, s.first_name, s.middle_name, s.last_name,
+        s.course, s.year_level, s.student_type
+       FROM enrollments e
+       JOIN students s ON e.student_id = s.id
+       WHERE e.id = ?`,
+      [id]
+    );
+
+    if (enrollments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Enrollment not found'
+      });
+    }
+
+    // Get enrolled subjects
+    const subjects = await query(
+      `SELECT es.*, sub.subject_code, sub.subject_name, sub.units
+       FROM enrollment_subjects es
+       JOIN subjects sub ON es.subject_id = sub.id
+       WHERE es.enrollment_id = ?`,
+      [id]
+    );
+
+    // Get transactions
+    const transactions = await query(
+      'SELECT * FROM transactions WHERE enrollment_id = ? ORDER BY payment_date DESC',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        enrollment: enrollments[0],
+        subjects,
+        transactions
+      }
+    });
+  } catch (error) {
+    console.error('Get enrollment by ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const updateEnrollmentStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, remarks } = req.body;
+    const userId = req.user?.id;
+
+    const updateFields: any = { status, remarks };
+
+    if (status === 'Assessed') {
+      updateFields.assessed_by = userId;
+      updateFields.assessed_at = new Date().toISOString();
+    } else if (status === 'Approved') {
+      updateFields.approved_by = userId;
+      updateFields.approved_at = new Date().toISOString();
+    }
+
+    const setClause = Object.keys(updateFields)
+      .map(key => `${key} = ?`)
+      .join(', ');
+    const values = Object.values(updateFields);
+
+    await run(
+      `UPDATE enrollments SET ${setClause}, updated_at = datetime('now') WHERE id = ?`,
+      [...values, id]
+    );
+
+    // Log activity
+    await run(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description) VALUES (?, ?, ?, ?, ?)',
+      [userId, 'UPDATE_ENROLLMENT_STATUS', 'enrollment', id, `Changed status to ${status}`]
+    );
+
+    res.json({
+      success: true,
+      message: 'Enrollment status updated successfully'
+    });
+  } catch (error) {
+    console.error('Update enrollment status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+export const getDashboardStats = async (req: AuthRequest, res: Response) => {
+  try {
+    // Total students
+    const totalStudents = await query(
+      'SELECT COUNT(*) as count FROM students WHERE status = ?',
+      ['Active']
+    );
+
+    // Total enrollments by status
+    const enrollmentStats = await query(
+      'SELECT status, COUNT(*) as count FROM enrollments GROUP BY status'
+    );
+
+    // Recent enrollments
+    const recentEnrollments = await query(
+      `SELECT e.*, s.student_id, s.first_name, s.last_name
+       FROM enrollments e
+       JOIN students s ON e.student_id = s.id
+       ORDER BY e.created_at DESC
+       LIMIT 10`
+    );
+
+    // Transaction summary
+    const transactionStats = await query(
+      `SELECT 
+        COUNT(*) as total_count,
+        SUM(amount) as total_amount,
+        SUM(CASE WHEN status = 'Completed' THEN amount ELSE 0 END) as completed_amount
+       FROM transactions
+       WHERE strftime('%Y', payment_date) = strftime('%Y', 'now')`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totalStudents: totalStudents[0]?.count || 0,
+        enrollmentStats,
+        recentEnrollments,
+        transactionStats: transactionStats[0] || { total_count: 0, total_amount: 0, completed_amount: 0 }
+      }
+    });
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};

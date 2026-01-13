@@ -1,0 +1,165 @@
+import api, { handleApiError } from '../utils/api';
+
+class AdminService {
+  /**
+   * Get dashboard statistics
+   */
+  async getDashboardStats(): Promise<any> {
+    try {
+      const response = await api.get('/admin/dashboard/stats');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Get all students with optional filters
+   */
+  async getAllStudents(filters?: {
+    student_type?: string;
+    status?: string;
+    search?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.get('/admin/students', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Get student by ID with enrollments and documents
+   */
+  async getStudentById(id: number): Promise<any> {
+    try {
+      const response = await api.get(`/admin/students/${id}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Create new student
+   */
+  async createStudent(studentData: {
+    username?: string;
+    password?: string;
+    email?: string;
+    student_id: string;
+    first_name: string;
+    middle_name?: string;
+    last_name: string;
+    suffix?: string;
+    student_type: string;
+    course?: string;
+    year_level?: number;
+    contact_number?: string;
+    address?: string;
+    birth_date?: string;
+    gender?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.post('/admin/students', studentData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Update student information
+   */
+  async updateStudent(id: number, studentData: any): Promise<any> {
+    try {
+      const response = await api.put(`/admin/students/${id}`, studentData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Delete student (superadmin only)
+   */
+  async deleteStudent(id: number): Promise<any> {
+    try {
+      const response = await api.delete(`/admin/students/${id}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Get all enrollments with filters
+   */
+  async getAllEnrollments(filters?: {
+    status?: string;
+    school_year?: string;
+    semester?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.get('/admin/enrollments', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Get enrollment details with subjects and transactions
+   */
+  async getEnrollmentById(id: number): Promise<any> {
+    try {
+      const response = await api.get(`/admin/enrollments/${id}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Update enrollment status
+   */
+  async updateEnrollmentStatus(
+    id: number,
+    status: string,
+    remarks?: string
+  ): Promise<any> {
+    try {
+      const response = await api.put(`/admin/enrollments/${id}/status`, {
+        status,
+        remarks,
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Approve enrollment
+   */
+  async approveEnrollment(id: number, remarks?: string): Promise<any> {
+    return this.updateEnrollmentStatus(id, 'Approved', remarks);
+  }
+
+  /**
+   * Reject enrollment
+   */
+  async rejectEnrollment(id: number, remarks?: string): Promise<any> {
+    return this.updateEnrollmentStatus(id, 'Rejected', remarks);
+  }
+
+  /**
+   * Assess enrollment
+   */
+  async assessEnrollment(id: number, remarks?: string): Promise<any> {
+    return this.updateEnrollmentStatus(id, 'Assessed', remarks);
+  }
+}
+
+export const adminService = new AdminService();
