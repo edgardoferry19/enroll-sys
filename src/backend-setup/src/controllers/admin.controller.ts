@@ -175,8 +175,13 @@ export const updateStudent = async (req: AuthRequest, res: Response) => {
       address,
       birth_date,
       gender,
-      status
+      status,
+      cor_status,
+      grades_complete,
+      clearance_status
     } = req.body;
+
+    const gradesCompleteValue = grades_complete ? 1 : 0;
 
     await run(
       `UPDATE students SET 
@@ -191,11 +196,15 @@ export const updateStudent = async (req: AuthRequest, res: Response) => {
         address = ?,
         birth_date = ?,
         gender = ?,
+        cor_status = ?,
+        grades_complete = ?,
+        clearance_status = ?,
         status = ?,
         updated_at = datetime('now')
       WHERE id = ?`,
       [first_name, middle_name, last_name, suffix, student_type, course,
-       year_level, contact_number, address, birth_date, gender, status, id]
+       year_level, contact_number, address, birth_date, gender,
+       cor_status, gradesCompleteValue, clearance_status, status, id]
     );
 
     res.json({

@@ -87,6 +87,11 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [editEnrollmentOpen, setEditEnrollmentOpen] = useState(false);
   const [editTransactionOpen, setEditTransactionOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [studentStatusForm, setStudentStatusForm] = useState<any>({
+    corStatus: '',
+    gradesComplete: false,
+    clearanceStatus: ''
+  });
   const [confirmAction, setConfirmAction] = useState<{
     open: boolean;
     type: 'approve-enrollment' | 'reject-enrollment' | 'approve-transaction' | 'deny-transaction' | null;
@@ -366,6 +371,11 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
   const handleUpdateStudent = (student: any) => {
     setSelectedStudent(student);
+    setStudentStatusForm({
+      corStatus: student.corStatus || 'Updated',
+      gradesComplete: student.gradesComplete ? 'Complete' : 'Incomplete',
+      clearanceStatus: student.clearanceStatus || 'Clear'
+    });
     setUpdateStudentOpen(true);
   };
 
@@ -426,6 +436,32 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       await fetchDashboardData();
     } catch (error: any) {
       alert(error.message || 'Failed to update transaction');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleSaveStudentStatus = async () => {
+    if (!selectedStudent?.studentId) return;
+    
+    try {
+      setLoadingSection('update-student-status');
+      await adminService.updateStudent(selectedStudent.studentId, {
+        cor_status: studentStatusForm.corStatus,
+        grades_complete: studentStatusForm.gradesComplete === 'Complete',
+        clearance_status: studentStatusForm.clearanceStatus
+      });
+      alert(`Student status updated for ${selectedStudent.name}`);
+      setUpdateStudentOpen(false);
+      // reflect changes locally
+      setStudents(prev => prev.map(s => s.studentId === selectedStudent.studentId ? { ...s, corStatus: studentStatusForm.corStatus, gradesComplete: studentStatusForm.gradesComplete === 'Complete', clearanceStatus: studentStatusForm.clearanceStatus } : s));
+      setStudentStatusForm({
+        corStatus: '',
+        gradesComplete: false,
+        clearanceStatus: ''
+      });
+    } catch (error: any) {
+      alert(error.message || 'Failed to update student status');
     } finally {
       setLoadingSection(null);
     }
@@ -1611,7 +1647,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             <div className="space-y-4">
               <div>
                 <Label htmlFor="cor-status">COR Status</Label>
-                <Select defaultValue={selectedStudent.corStatus}>
+                <Select value={studentStatusForm.corStatus} onValueChange={(value) => setStudentStatusForm({ ...studentStatusForm, corStatus: value })}>
                   <SelectTrigger id="cor-status" className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
@@ -1625,7 +1661,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
               <div>
                 <Label htmlFor="grades-complete">Grades Status</Label>
-                <Select defaultValue={selectedStudent.gradesComplete ? 'Complete' : 'Incomplete'}>
+                <Select value={studentStatusForm.gradesComplete} onValueChange={(value) => setStudentStatusForm({ ...studentStatusForm, gradesComplete: value })}>
                   <SelectTrigger id="grades-complete" className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
@@ -1638,7 +1674,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
               <div>
                 <Label htmlFor="clearance-status">Clearance Status</Label>
-                <Select defaultValue={selectedStudent.clearanceStatus}>
+                <Select value={studentStatusForm.clearanceStatus} onValueChange={(value) => setStudentStatusForm({ ...studentStatusForm, clearanceStatus: value })}>
                   <SelectTrigger id="clearance-status" className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
@@ -1654,8 +1690,19 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 <Button variant="outline" onClick={() => setUpdateStudentOpen(false)}>
                   Cancel
                 </Button>
-                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                  Update Status
+                <Button 
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                  onClick={handleSaveStudentStatus}
+                  disabled={loadingSection === 'update-student-status'}
+                >
+                  {loadingSection === 'update-student-status' ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Status'
+                  )}
                 </Button>
               </div>
             </div>

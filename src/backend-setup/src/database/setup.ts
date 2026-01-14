@@ -44,6 +44,9 @@ async function setupDatabase() {
         address TEXT,
         birth_date TEXT,
         gender TEXT CHECK(gender IN ('Male', 'Female', 'Other')),
+        cor_status TEXT DEFAULT 'Updated',
+        grades_complete INTEGER DEFAULT 0,
+        clearance_status TEXT DEFAULT 'Clear',
         status TEXT DEFAULT 'Active' CHECK(status IN ('Active', 'Inactive', 'Graduated')),
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
@@ -56,6 +59,7 @@ async function setupDatabase() {
     db.exec('CREATE INDEX IF NOT EXISTS idx_student_id ON students(student_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_student_type ON students(student_type)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_status ON students(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cor_status ON students(cor_status)');
 
     // Create enrollments table
     db.exec(`
