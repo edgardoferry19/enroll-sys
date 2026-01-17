@@ -417,12 +417,54 @@ async function setupDatabase() {
     insertManySubjects(sampleSubjects);
     console.log('✅ Sample subjects created');
 
+    // Insert sample student (password: password)
+    const studentPassword = await bcrypt.hash('password', 10);
+    const insertStudentUser = db.prepare('INSERT OR IGNORE INTO users (username, password, role, email) VALUES (?, ?, ?, ?)');
+    insertStudentUser.run('student1', studentPassword, 'student', 'student1@informatics.edu');
+    
+    // Get the student user ID (whether newly created or already exists)
+    const studentUsers = await query('SELECT id FROM users WHERE username = ?', ['student1']);
+    if (studentUsers.length > 0) {
+      const studentUserId = studentUsers[0].id;
+      
+      // Check if student record already exists
+      const existingStudents = await query('SELECT id FROM students WHERE user_id = ?', [studentUserId]);
+      
+      if (existingStudents.length === 0) {
+        const insertStudent = db.prepare(`
+          INSERT INTO students (
+            user_id, student_id, first_name, middle_name, last_name, suffix,
+            student_type, course, year_level, contact_number, address, birth_date, gender, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')
+        `);
+        insertStudent.run(
+          studentUserId,
+          '2024-0001',
+          'Juan',
+          'Santos',
+          'Dela Cruz',
+          null,
+          'New',
+          'BSCS',
+          1,
+          '0917-123-4567',
+          '123 Rizal Street, Manila City',
+          '2005-05-15',
+          'Male'
+        );
+        console.log('✅ Sample student created');
+      } else {
+        console.log('ℹ️  Sample student already exists');
+      }
+    }
+
     console.log('\n🎉 Database setup completed successfully!');
     console.log('\nDefault credentials:');
     console.log('  Superadmin: superadmin / admin123');
     console.log('  Admin: admin1 / admin123');
     console.log('  Dean: dean1 / admin123');
     console.log('  Registrar: registrar1 / admin123');
+    console.log('  Student: student1 / password (Student ID: 2024-0001)');
 
   } catch (error) {
     console.error('❌ Error setting up database:', error);
