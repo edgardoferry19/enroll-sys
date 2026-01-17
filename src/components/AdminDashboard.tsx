@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { 
   User, 
@@ -28,6 +28,9 @@ import {
 import { adminService } from '../services/admin.service';
 import { transactionService } from '../services/transaction.service';
 import { studentService } from '../services/student.service';
+import { facultyService } from '../services/faculty.service';
+import { gradesService } from '../services/grades.service';
+import { maintenanceService } from '../services/maintenance.service';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
@@ -74,7 +77,59 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [removeStudentOpen, setRemoveStudentOpen] = useState(false);
   const [addTeacherOpen, setAddTeacherOpen] = useState(false);
+  const [editTeacherOpen, setEditTeacherOpen] = useState(false);
   const [removeTeacherOpen, setRemoveTeacherOpen] = useState(false);
+  const [newTeacherForm, setNewTeacherForm] = useState({
+    faculty_id: '',
+    first_name: '',
+    middle_name: '',
+    last_name: '',
+    suffix: '',
+    department: '',
+    specialization: '',
+    email: '',
+    contact_number: ''
+  });
+  const [editTeacherForm, setEditTeacherForm] = useState({
+    faculty_id: '',
+    first_name: '',
+    middle_name: '',
+    last_name: '',
+    suffix: '',
+    department: '',
+    specialization: '',
+    email: '',
+    contact_number: '',
+    status: 'Active'
+  });
+  const [newSectionForm, setNewSectionForm] = useState({
+    section_code: '',
+    section_name: '',
+    course: '',
+    year_level: 1,
+    school_year: '',
+    semester: '1st',
+    capacity: 50,
+    adviser_id: 0
+  });
+  const [newSubjectForm, setNewSubjectForm] = useState({
+    subject_code: '',
+    subject_name: '',
+    description: '',
+    units: 3,
+    course: '',
+    year_level: 1,
+    semester: '1st',
+    subject_type: 'College' as 'SHS' | 'College'
+  });
+  const [newSchoolYearForm, setNewSchoolYearForm] = useState({
+    school_year: '',
+    start_date: '',
+    end_date: '',
+    enrollment_start: '',
+    enrollment_end: '',
+    is_active: false
+  });
   const [viewGradesOpen, setViewGradesOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
@@ -104,8 +159,17 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [sections, setSections] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [schoolYears, setSchoolYears] = useState<any[]>([]);
+  const [shsStudents, setShsStudents] = useState<any[]>([]);
+  const [collegeStudents, setCollegeStudents] = useState<any[]>([]);
+  const [shsGrades, setShsGrades] = useState<any[]>([]);
+  const [collegeGrades, setCollegeGrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSection, setLoadingSection] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
 
   // Form state for dialogs
   const [newStudentForm, setNewStudentForm] = useState({
@@ -236,12 +300,73 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
           course: s.course || 'N/A',
           year: s.year_level ? `${s.year_level}${getOrdinalSuffix(s.year_level)} Year` : 'N/A',
           section: s.section || 'N/A',
-          corStatus: 'Updated', // These would come from enrollment data
-          gradesComplete: true,
-          clearanceStatus: 'Clear',
+          corStatus: s.cor_status || 'Updated',
+          gradesComplete: s.grades_complete || false,
+          clearanceStatus: s.clearance_status || 'Clear',
           ...s
         })) || [];
         setStudents(studentList);
+
+        // Separate SHS and College students
+        const shs = studentList.filter((s: any) => s.course?.includes('SHS') || s.course?.includes('Senior'));
+        const college = studentList.filter((s: any) => !s.course?.includes('SHS') && !s.course?.includes('Senior'));
+        setShsStudents(shs);
+        setCollegeStudents(college);
+      }
+
+      // Fetch teachers
+      if (activeSection === 'Manage Teachers') {
+        const teachersData = await facultyService.getAllFaculty();
+        if (teachersData.success) {
+          setTeachers(teachersData.data || []);
+        }
+      }
+
+      // Fetch sections
+      if (activeSection === 'Sections') {
+        const sectionsData = await maintenanceService.getAllSections();
+        if (sectionsData.success) {
+          setSections(sectionsData.data || []);
+        }
+      }
+
+      // Fetch subjects
+      if (activeSection === 'SHS Subjects' || activeSection === 'College Subjects') {
+        const subjectType = activeSection === 'SHS Subjects' ? 'SHS' : 'College';
+        const subjectsData = await maintenanceService.getAllSubjectsByType({ subject_type: subjectType });
+        if (subjectsData.success) {
+          setSubjects(subjectsData.data || []);
+        }
+      }
+
+      // Fetch school years
+      if (activeSection === 'School Year') {
+        const schoolYearsData = await maintenanceService.getAllSchoolYears();
+        if (schoolYearsData.success) {
+          setSchoolYears(schoolYearsData.data || []);
+        }
+      }
+
+      // Fetch grades for SHS
+      if (activeSection === 'SHS Grades' && shsStudents.length > 0) {
+        // Fetch grades for first student as example - in real app, would fetch all
+        if (shsStudents[0]) {
+          const gradesData = await gradesService.getStudentGrades(shsStudents[0].id, { subject_type: 'SHS' });
+          if (gradesData.success) {
+            setShsGrades(gradesData.data || []);
+          }
+        }
+      }
+
+      // Fetch grades for College
+      if (activeSection === 'College Grades' && collegeStudents.length > 0) {
+        // Fetch grades for first student as example - in real app, would fetch all
+        if (collegeStudents[0]) {
+          const gradesData = await gradesService.getStudentGrades(collegeStudents[0].id, { subject_type: 'College' });
+          if (gradesData.success) {
+            setCollegeGrades(gradesData.data || []);
+          }
+        }
       }
     } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
@@ -284,68 +409,9 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     return s[(v - 20) % 10] || s[v] || s[0];
   };
 
-  const teachers = [
-    { 
-      id: 'T-001', 
-      name: 'Dr. Roberto Santos', 
-      department: 'Computer Science',
-      subjects: ['CS101 - Introduction to Programming', 'CS201 - Advanced Programming', 'CS301 - Software Engineering']
-    },
-    { 
-      id: 'T-002', 
-      name: 'Prof. Maria Reyes', 
-      department: 'Mathematics',
-      subjects: ['MATH201 - Calculus I', 'MATH301 - Calculus II']
-    },
-    { 
-      id: 'T-003', 
-      name: 'Ms. Jennifer Garcia', 
-      department: 'English',
-      subjects: ['ENG101 - Technical Writing', 'ENG201 - Professional Communication']
-    },
-  ];
+  // Placeholder data removed - now using state from backend
 
-  const shsStudents = [
-    { id: 'SHS-001', name: 'Alice Villanueva', strand: 'STEM', grade: '11', section: 'STEM-11A', gpa: 1.5, grades: [
-      { subject: 'General Mathematics', grade: 1.5 },
-      { subject: 'Earth Science', grade: 1.75 },
-      { subject: 'Physical Science', grade: 1.25 }
-    ]},
-    { id: 'SHS-002', name: 'Bob Martinez', strand: 'STEM', grade: '12', section: 'STEM-12B', gpa: 1.8, grades: [
-      { subject: 'Pre-Calculus', grade: 1.5 },
-      { subject: 'Chemistry', grade: 2.0 },
-      { subject: 'Physics', grade: 1.75 }
-    ]},
-    { id: 'SHS-003', name: 'Carol Garcia', strand: 'ABM', grade: '11', section: 'ABM-11A', gpa: 1.7, grades: [
-      { subject: 'Business Math', grade: 1.5 },
-      { subject: 'Economics', grade: 1.75 },
-      { subject: 'Accounting', grade: 1.75 }
-    ]},
-  ];
-
-  const collegeStudents = [
-    { id: '2024-001', name: 'Juan Dela Cruz', course: 'BSIT', year: '2nd Year', gpa: 1.6, grades: [
-      { subject: 'CS101 - Introduction to Programming', grade: 1.5 },
-      { subject: 'MATH201 - Calculus I', grade: 1.75 },
-      { subject: 'ENG101 - Technical Writing', grade: 1.5 }
-    ]},
-    { id: '2024-002', name: 'Maria Santos', course: 'BSCS', year: '3rd Year', gpa: 1.4, grades: [
-      { subject: 'CS201 - Data Structures', grade: 1.25 },
-      { subject: 'CS301 - Algorithms', grade: 1.5 },
-      { subject: 'MATH301 - Discrete Math', grade: 1.5 }
-    ]},
-    { id: '2024-003', name: 'Jose Reyes', course: 'BSIT', year: '1st Year', gpa: 1.9, grades: [
-      { subject: 'CS100 - Computer Fundamentals', grade: 2.0 },
-      { subject: 'MATH101 - College Algebra', grade: 1.75 },
-      { subject: 'ENG100 - Communication Skills', grade: 2.0 }
-    ]},
-  ];
-
-  const sections = [
-    { id: 'S-001', name: 'IT-1A', course: 'BSIT', yearLevel: '1st Year', adviser: 'Dr. Roberto Santos' },
-    { id: 'S-002', name: 'CS-2B', course: 'BSCS', yearLevel: '2nd Year', adviser: 'Prof. Maria Reyes' },
-    { id: 'S-003', name: 'STEM-11A', course: 'STEM', yearLevel: 'Grade 11', adviser: 'Ms. Jennifer Garcia' },
-  ];
+  // Placeholder data removed - now using state from backend
 
   const handlePreviewStudent = (pending: any) => {
     setSelectedItem(pending);
@@ -446,6 +512,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     
     try {
       setLoadingSection('update-student-status');
+      // Only send the status fields we're updating
       await adminService.updateStudent(selectedStudent.studentId, {
         cor_status: studentStatusForm.corStatus,
         grades_complete: studentStatusForm.gradesComplete === 'Complete',
@@ -460,8 +527,106 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         gradesComplete: false,
         clearanceStatus: ''
       });
+      await fetchDashboardData();
     } catch (error: any) {
       alert(error.message || 'Failed to update student status');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleCreateTeacher = async () => {
+    try {
+      setError('');
+      setLoadingSection('create-teacher');
+      await facultyService.createFaculty(newTeacherForm);
+      setAddTeacherOpen(false);
+      setNewTeacherForm({
+        faculty_id: '',
+        first_name: '',
+        middle_name: '',
+        last_name: '',
+        suffix: '',
+        department: '',
+        specialization: '',
+        email: '',
+        contact_number: ''
+      });
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create teacher');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleUpdateTeacher = async () => {
+    try {
+      setError('');
+      setLoadingSection('update-teacher');
+      await facultyService.updateFaculty(selectedStudent.id, editTeacherForm);
+      setEditTeacherOpen(false);
+      setSelectedStudent(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update teacher');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleDeleteTeacher = async () => {
+    try {
+      setError('');
+      setLoadingSection('delete-teacher');
+      await facultyService.deleteFaculty(selectedStudent.id);
+      setRemoveTeacherOpen(false);
+      setSelectedStudent(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete teacher');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleCreateSection = async (sectionData: any) => {
+    try {
+      setError('');
+      setLoadingSection('create-section');
+      await maintenanceService.createSection(sectionData);
+      setAddSectionOpen(false);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create section');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleCreateSubject = async (subjectData: any) => {
+    try {
+      setError('');
+      setLoadingSection('create-subject');
+      await maintenanceService.createSubject(subjectData);
+      setAddSubjectOpen(false);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create subject');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleCreateSchoolYear = async (schoolYearData: any) => {
+    try {
+      setError('');
+      setLoadingSection('create-school-year');
+      await maintenanceService.createSchoolYear(schoolYearData);
+      setAddSectionOpen(false);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create school year');
     } finally {
       setLoadingSection(null);
     }
@@ -903,298 +1068,532 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     </div>
   );
 
-  const renderManageTeachersContent = () => (
-    <div>
-      <div className="flex items-center justify-end mb-6">
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => setAddTeacherOpen(true)}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
-          >
-            <UserPlus className="h-4 w-4" />
-            Add Teacher
-          </Button>
-          <Button 
-            onClick={() => setRemoveTeacherOpen(true)}
-            variant="outline"
-            className="text-red-600 hover:bg-red-50 border-red-200 gap-2"
-          >
-            <UserMinus className="h-4 w-4" />
-            Remove Teacher
-          </Button>
+  const renderManageTeachersContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-end mb-6">
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setAddTeacherOpen(true)}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Teacher
+            </Button>
+          </div>
+        </div>
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            {teachers.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No teachers found</p>
+            ) : (
+              <div className="space-y-3">
+                {teachers.map((teacher) => (
+                  <div key={teacher.id} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="text-slate-900">{teacher.first_name} {teacher.last_name}</h4>
+                        <p className="text-sm text-slate-500">{teacher.faculty_id} • {teacher.department || 'N/A'}</p>
+                        {teacher.specialization && (
+                          <p className="text-sm text-slate-600 mt-1">{teacher.specialization}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedStudent(teacher);
+                            setEditTeacherForm({
+                              faculty_id: teacher.faculty_id || '',
+                              first_name: teacher.first_name || '',
+                              middle_name: teacher.middle_name || '',
+                              last_name: teacher.last_name || '',
+                              suffix: teacher.suffix || '',
+                              department: teacher.department || '',
+                              specialization: teacher.specialization || '',
+                              email: teacher.email || '',
+                              contact_number: teacher.contact_number || '',
+                              status: teacher.status || 'Active'
+                            });
+                            setEditTeacherOpen(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50"
+                          onClick={() => {
+                            setSelectedStudent(teacher);
+                            setRemoveTeacherOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                    {teacher.email && (
+                      <p className="text-xs text-slate-500">{teacher.email}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <div className="space-y-3">
-            {teachers.map((teacher, index) => (
-              <div key={index} className="p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h4 className="text-slate-900">{teacher.name}</h4>
-                    <p className="text-sm text-slate-500">{teacher.id} • {teacher.department}</p>
+    );
+  };
+
+  const renderSHSGradesContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            <p className="text-slate-600 mb-6">View and manage SHS student grades.</p>
+            {shsStudents.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No SHS students found</p>
+            ) : (
+              <div className="space-y-3">
+                {shsStudents.map((student) => (
+                  <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex-1">
+                      <h4 className="text-slate-900">{student.name}</h4>
+                      <p className="text-sm text-slate-500">
+                        {student.id} • {student.course} • {student.year}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS' });
+                            if (gradesData.success) {
+                              setSelectedStudent({ ...student, grades: gradesData.data });
+                              setViewGradesOpen(true);
+                            }
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to load grades');
+                          }
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Grades
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS' });
+                            if (gradesData.success) {
+                              setSelectedStudent({ ...student, grades: gradesData.data });
+                              setEditGradesOpen(true);
+                            }
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to load grades');
+                          }
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
                   </div>
-                  <Button size="sm" variant="outline">
-                    Edit
-                  </Button>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-600 mb-2">Assigned Subjects:</p>
-                  <div className="space-y-1">
-                    {teacher.subjects.map((subject, idx) => (
-                      <p key={idx} className="text-sm text-slate-700">• {subject}</p>
-                    ))}
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderCollegeGradesContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            <p className="text-slate-600 mb-6">View and manage college student grades.</p>
+            {collegeStudents.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No college students found</p>
+            ) : (
+              <div className="space-y-3">
+                {collegeStudents.map((student) => (
+                  <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex-1">
+                      <h4 className="text-slate-900">{student.name}</h4>
+                      <p className="text-sm text-slate-500">
+                        {student.id} • {student.course} • {student.year}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'College' });
+                            if (gradesData.success) {
+                              setSelectedStudent({ ...student, grades: gradesData.data });
+                              setViewGradesOpen(true);
+                            }
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to load grades');
+                          }
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Grades
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'College' });
+                            if (gradesData.success) {
+                              setSelectedStudent({ ...student, grades: gradesData.data });
+                              setEditGradesOpen(true);
+                            }
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to load grades');
+                          }
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderSectionsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-end mb-6">
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setAddSectionOpen(true)}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Section
+            </Button>
           </div>
         </div>
-      </Card>
-    </div>
-  );
-
-  const renderSHSGradesContent = () => (
-    <div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <p className="text-slate-600 mb-6">View and manage SHS student grades.</p>
-          <div className="space-y-3">
-            {shsStudents.map((student, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex-1">
-                  <h4 className="text-slate-900">{student.name}</h4>
-                  <p className="text-sm text-slate-500">
-                    {student.id} • {student.strand} • Grade {student.grade} • {student.section}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleViewGrades(student)}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Grades
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleEditGrades(student)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={handlePrintGrades}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Print
-                  </Button>
-                </div>
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            {sections.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No sections found</p>
+            ) : (
+              <div className="space-y-3">
+                {sections.map((section) => (
+                  <div key={section.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex-1">
+                      <h4 className="text-slate-900">{section.section_name}</h4>
+                      <p className="text-sm text-slate-500">
+                        {section.section_code} • {section.course} • Year {section.year_level}
+                        {section.adviser_name && ` • Adviser: ${section.adviser_name}`}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {section.current_enrollment || 0}/{section.capacity || 50} students • {section.school_year} • {section.semester}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline">
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={async () => {
+                          try {
+                            await maintenanceService.deleteSection(section.id);
+                            fetchDashboardData();
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to delete section');
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderSubjectsContent = (type: 'SHS' | 'College') => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    const filteredSubjects = subjects.filter((s: any) => s.subject_type === type);
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-end mb-6">
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => {
+                setSelectedStudent({ subject_type: type });
+                setAddSubjectOpen(true);
+              }}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Subject
+            </Button>
           </div>
         </div>
-      </Card>
-    </div>
-  );
-
-  const renderCollegeGradesContent = () => (
-    <div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <p className="text-slate-600 mb-6">View and manage college student grades.</p>
-          <div className="space-y-3">
-            {collegeStudents.map((student, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex-1">
-                  <h4 className="text-slate-900">{student.name}</h4>
-                  <p className="text-sm text-slate-500">
-                    {student.id} • {student.course} • {student.year}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleViewGrades(student)}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Grades
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleEditGrades(student)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={handlePrintGrades}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Print
-                  </Button>
-                </div>
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            <p className="text-slate-600 mb-4">Manage {type} subjects and curriculum.</p>
+            {filteredSubjects.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No {type} subjects found</p>
+            ) : (
+              <div className="space-y-2">
+                {filteredSubjects.map((subject) => (
+                  <div key={subject.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
+                    <div className="flex-1">
+                      <p className="text-sm text-slate-900">{subject.subject_code} - {subject.subject_name}</p>
+                      <p className="text-xs text-slate-500">
+                        {subject.units} units
+                        {subject.course && ` • ${subject.course}`}
+                        {subject.year_level && ` • Year ${subject.year_level}`}
+                        {subject.semester && ` • ${subject.semester} Semester`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline">
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={async () => {
+                          try {
+                            await maintenanceService.deleteSubject(subject.id);
+                            fetchDashboardData();
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to delete subject');
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      </Card>
-    </div>
-  );
+        </Card>
+      </div>
+    );
+  };
 
-  const renderSectionsContent = () => (
-    <div>
-      <div className="flex items-center justify-end mb-6">
-        <div className="flex gap-2">
+  const renderSchoolYearContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    const activeSchoolYear = schoolYears.find((sy: any) => sy.is_active === 1);
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-end mb-6">
           <Button 
             onClick={() => setAddSectionOpen(true)}
             className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
           >
             <Plus className="h-4 w-4" />
-            Add Section
-          </Button>
-          <Button 
-            onClick={() => setRemoveSectionOpen(true)}
-            variant="outline"
-            className="text-red-600 hover:bg-red-50 border-red-200 gap-2"
-          >
-            <Trash2 className="h-4 w-4" />
-            Remove Section
+            Add School Year
           </Button>
         </div>
-      </div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <div className="space-y-3">
-            {sections.map((section, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex-1">
-                  <h4 className="text-slate-900">{section.name}</h4>
-                  <p className="text-sm text-slate-500">
-                    {section.course} • {section.yearLevel} • Adviser: {section.adviser}
+        <Card className="border-0 shadow-lg p-6">
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="school-year">Active School Year</Label>
+              {activeSchoolYear ? (
+                <div className="mt-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="font-medium text-blue-900">{activeSchoolYear.school_year}</p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    {activeSchoolYear.start_date} to {activeSchoolYear.end_date}
                   </p>
+                  {activeSchoolYear.enrollment_start && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Enrollment: {activeSchoolYear.enrollment_start} to {activeSchoolYear.enrollment_end}
+                    </p>
+                  )}
                 </div>
-                <Button size="sm" variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
+              ) : (
+                <p className="text-sm text-slate-500 mt-2">No active school year set</p>
+              )}
+            </div>
 
-  const renderSubjectsContent = (type: 'SHS' | 'College') => (
-    <div>
-      <div className="flex items-center justify-end mb-6">
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => setAddSubjectOpen(true)}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add Subject
-          </Button>
-          <Button 
-            onClick={() => setRemoveSubjectOpen(true)}
-            variant="outline"
-            className="text-red-600 hover:bg-red-50 border-red-200 gap-2"
-          >
-            <Trash2 className="h-4 w-4" />
-            Remove Subject
-          </Button>
-        </div>
-      </div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <p className="text-slate-600 mb-4">Manage {type} subjects and curriculum.</p>
-          <div className="space-y-2">
-            {(type === 'SHS' ? [
-              { code: 'GEN-MATH', name: 'General Mathematics', units: 3 },
-              { code: 'EARTH-SCI', name: 'Earth Science', units: 3 },
-              { code: 'PHYSICAL-SCI', name: 'Physical Science', units: 3 },
-            ] : [
-              { code: 'CS101', name: 'Introduction to Programming', units: 3 },
-              { code: 'MATH201', name: 'Calculus I', units: 3 },
-              { code: 'ENG101', name: 'Technical Writing', units: 3 },
-            ]).map((subject, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50">
-                <div className="flex-1">
-                  <p className="text-sm text-slate-900">{subject.code} - {subject.name}</p>
-                  <p className="text-xs text-slate-500">{subject.units} units</p>
+            <div className="border-t pt-4 mt-6">
+              <h4 className="mb-3">All School Years</h4>
+              {schoolYears.length === 0 ? (
+                <p className="text-center text-slate-500 py-8">No school years found</p>
+              ) : (
+                <div className="space-y-2">
+                  {schoolYears.map((sy: any) => (
+                    <div key={sy.id} className="p-3 border rounded-lg flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{sy.school_year}</p>
+                        <p className="text-sm text-slate-500">
+                          {sy.start_date} to {sy.end_date}
+                          {sy.is_active === 1 && (
+                            <Badge className="ml-2 bg-green-100 text-green-700 border-0">Active</Badge>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50"
+                          onClick={async () => {
+                            try {
+                              await maintenanceService.deleteSchoolYear(sy.id);
+                              fetchDashboardData();
+                            } catch (err: any) {
+                              setError(err.message || 'Failed to delete school year');
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <Button size="sm" variant="outline">
-                  Edit
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-
-  const renderSchoolYearContent = () => (
-    <div>
-      <Card className="border-0 shadow-lg p-6">
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="school-year">Select Active School Year</Label>
-            <Select value={selectedSchoolYear} onValueChange={setSelectedSchoolYear}>
-              <SelectTrigger id="school-year" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2022-2023">2022-2023</SelectItem>
-                <SelectItem value="2023-2024">2023-2024</SelectItem>
-                <SelectItem value="2024-2025">2024-2025</SelectItem>
-                <SelectItem value="2025-2026">2025-2026</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-slate-500 mt-2">
-              All data displayed will be based on the selected school year: <span className="font-medium">{selectedSchoolYear}</span>
-            </p>
-          </div>
-
-          <div className="border-t pt-4 mt-6">
-            <h4 className="mb-3">School Year Information</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-slate-500">Current Semester</p>
-                <p className="font-medium">1st Semester</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Total Enrolled Students</p>
-                <p className="font-medium">1,243</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Active Courses</p>
-                <p className="font-medium">42</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Total Teachers</p>
-                <p className="font-medium">87</p>
-              </div>
+              )}
             </div>
           </div>
-
-          <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 mt-4">
-            Update School Year
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
+        </Card>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -1721,40 +2120,140 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="section-name">Section Name</Label>
-              <Input id="section-name" placeholder="e.g., IT-1A" className="mt-2" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="section-code">Section Code</Label>
+                <Input 
+                  id="section-code" 
+                  placeholder="e.g., IT-1A" 
+                  className="mt-2"
+                  value={newSectionForm.section_code}
+                  onChange={(e) => setNewSectionForm({ ...newSectionForm, section_code: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="section-name">Section Name</Label>
+                <Input 
+                  id="section-name" 
+                  placeholder="e.g., IT-1A" 
+                  className="mt-2"
+                  value={newSectionForm.section_name}
+                  onChange={(e) => setNewSectionForm({ ...newSectionForm, section_name: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="section-course">Course/Program</Label>
+                <Input 
+                  id="section-course" 
+                  placeholder="e.g., BSIT" 
+                  className="mt-2"
+                  value={newSectionForm.course}
+                  onChange={(e) => setNewSectionForm({ ...newSectionForm, course: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="section-year">Year Level</Label>
+                <Input 
+                  id="section-year" 
+                  type="number"
+                  min="1"
+                  max="4"
+                  placeholder="1" 
+                  className="mt-2"
+                  value={newSectionForm.year_level}
+                  onChange={(e) => setNewSectionForm({ ...newSectionForm, year_level: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="section-school-year">School Year</Label>
+                <Input 
+                  id="section-school-year" 
+                  placeholder="2024-2025" 
+                  className="mt-2"
+                  value={newSectionForm.school_year}
+                  onChange={(e) => setNewSectionForm({ ...newSectionForm, school_year: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="section-semester">Semester</Label>
+                <Select
+                  value={newSectionForm.semester}
+                  onValueChange={(value) => setNewSectionForm({ ...newSectionForm, semester: value })}
+                >
+                  <SelectTrigger id="section-semester" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1st">1st Semester</SelectItem>
+                    <SelectItem value="2nd">2nd Semester</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
-              <Label htmlFor="section-course">Course/Program</Label>
-              <Input id="section-course" placeholder="e.g., BSIT" className="mt-2" />
-            </div>
-            <div>
-              <Label htmlFor="section-year">Year Level</Label>
-              <Input id="section-year" placeholder="e.g., 1st Year" className="mt-2" />
+              <Label htmlFor="section-capacity">Capacity</Label>
+              <Input 
+                id="section-capacity" 
+                type="number"
+                placeholder="50" 
+                className="mt-2"
+                value={newSectionForm.capacity}
+                onChange={(e) => setNewSectionForm({ ...newSectionForm, capacity: parseInt(e.target.value) || 50 })}
+              />
             </div>
             <div>
               <Label htmlFor="section-adviser">Adviser (Optional)</Label>
-              <Select>
+              <Select
+                value={newSectionForm.adviser_id.toString()}
+                onValueChange={(value) => setNewSectionForm({ ...newSectionForm, adviser_id: parseInt(value) || 0 })}
+              >
                 <SelectTrigger id="section-adviser" className="mt-2">
                   <SelectValue placeholder="Select adviser (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="0">None</SelectItem>
                   {teachers.map((teacher) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {teacher.name}
+                    <SelectItem key={teacher.id} value={teacher.id.toString()}>
+                      {teacher.first_name} {teacher.last_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setAddSectionOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setAddSectionOpen(false);
+                setNewSectionForm({
+                  section_code: '',
+                  section_name: '',
+                  course: '',
+                  year_level: 1,
+                  school_year: '',
+                  semester: '1st',
+                  capacity: 50,
+                  adviser_id: 0
+                });
+              }}>
                 Cancel
               </Button>
-              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                Add Section
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={() => handleCreateSection(newSectionForm)}
+                disabled={loadingSection === 'create-section'}
+              >
+                {loadingSection === 'create-section' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add Section'
+                )}
               </Button>
             </div>
           </div>
@@ -1772,23 +2271,134 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label htmlFor="subject-type">Subject Type</Label>
+              <Select
+                value={newSubjectForm.subject_type}
+                onValueChange={(value: 'SHS' | 'College') => setNewSubjectForm({ ...newSubjectForm, subject_type: value })}
+              >
+                <SelectTrigger id="subject-type" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SHS">SHS</SelectItem>
+                  <SelectItem value="College">College</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="subject-code">Subject Code</Label>
-              <Input id="subject-code" placeholder="e.g., CS101" className="mt-2" />
+              <Input 
+                id="subject-code" 
+                placeholder="e.g., CS101" 
+                className="mt-2"
+                value={newSubjectForm.subject_code}
+                onChange={(e) => setNewSubjectForm({ ...newSubjectForm, subject_code: e.target.value })}
+              />
             </div>
             <div>
               <Label htmlFor="subject-name">Subject Name</Label>
-              <Input id="subject-name" placeholder="e.g., Introduction to Programming" className="mt-2" />
+              <Input 
+                id="subject-name" 
+                placeholder="e.g., Introduction to Programming" 
+                className="mt-2"
+                value={newSubjectForm.subject_name}
+                onChange={(e) => setNewSubjectForm({ ...newSubjectForm, subject_name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="subject-units">Units</Label>
+                <Input 
+                  id="subject-units" 
+                  type="number" 
+                  placeholder="3" 
+                  className="mt-2"
+                  value={newSubjectForm.units}
+                  onChange={(e) => setNewSubjectForm({ ...newSubjectForm, units: parseInt(e.target.value) || 3 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="subject-course">Course (Optional)</Label>
+                <Input 
+                  id="subject-course" 
+                  placeholder="e.g., BSIT" 
+                  className="mt-2"
+                  value={newSubjectForm.course}
+                  onChange={(e) => setNewSubjectForm({ ...newSubjectForm, course: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="subject-year">Year Level (Optional)</Label>
+                <Input 
+                  id="subject-year" 
+                  type="number"
+                  min="1"
+                  max="4"
+                  placeholder="1" 
+                  className="mt-2"
+                  value={newSubjectForm.year_level}
+                  onChange={(e) => setNewSubjectForm({ ...newSubjectForm, year_level: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="subject-semester">Semester (Optional)</Label>
+                <Select
+                  value={newSubjectForm.semester}
+                  onValueChange={(value) => setNewSubjectForm({ ...newSubjectForm, semester: value })}
+                >
+                  <SelectTrigger id="subject-semester" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1st">1st Semester</SelectItem>
+                    <SelectItem value="2nd">2nd Semester</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
-              <Label htmlFor="subject-units">Units</Label>
-              <Input id="subject-units" type="number" placeholder="3" className="mt-2" />
+              <Label htmlFor="subject-description">Description (Optional)</Label>
+              <Textarea 
+                id="subject-description" 
+                placeholder="Subject description" 
+                className="mt-2"
+                rows={3}
+                value={newSubjectForm.description}
+                onChange={(e) => setNewSubjectForm({ ...newSubjectForm, description: e.target.value })}
+              />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setAddSubjectOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setAddSubjectOpen(false);
+                setNewSubjectForm({
+                  subject_code: '',
+                  subject_name: '',
+                  description: '',
+                  units: 3,
+                  course: '',
+                  year_level: 1,
+                  semester: '1st',
+                  subject_type: selectedStudent?.subject_type || 'College'
+                });
+              }}>
                 Cancel
               </Button>
-              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                Add Subject
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={() => handleCreateSubject(newSubjectForm)}
+                disabled={loadingSection === 'create-subject'}
+              >
+                {loadingSection === 'create-subject' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add Subject'
+                )}
               </Button>
             </div>
           </div>
@@ -2136,23 +2746,201 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="teacher-name">Teacher Name</Label>
-              <Input id="teacher-name" placeholder="Enter full name" className="mt-2" />
+              <Label htmlFor="teacher-faculty-id">Faculty ID</Label>
+              <Input 
+                id="teacher-faculty-id" 
+                placeholder="F-001" 
+                className="mt-2"
+                value={newTeacherForm.faculty_id}
+                onChange={(e) => setNewTeacherForm({ ...newTeacherForm, faculty_id: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="teacher-first-name">First Name</Label>
+                <Input 
+                  id="teacher-first-name" 
+                  placeholder="First name" 
+                  className="mt-2"
+                  value={newTeacherForm.first_name}
+                  onChange={(e) => setNewTeacherForm({ ...newTeacherForm, first_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="teacher-last-name">Last Name</Label>
+                <Input 
+                  id="teacher-last-name" 
+                  placeholder="Last name" 
+                  className="mt-2"
+                  value={newTeacherForm.last_name}
+                  onChange={(e) => setNewTeacherForm({ ...newTeacherForm, last_name: e.target.value })}
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="teacher-dept">Department</Label>
-              <Input id="teacher-dept" placeholder="e.g., Computer Science" className="mt-2" />
+              <Input 
+                id="teacher-dept" 
+                placeholder="e.g., Computer Science" 
+                className="mt-2"
+                value={newTeacherForm.department}
+                onChange={(e) => setNewTeacherForm({ ...newTeacherForm, department: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="teacher-email">Email</Label>
+                <Input 
+                  id="teacher-email" 
+                  type="email"
+                  placeholder="email@example.com" 
+                  className="mt-2"
+                  value={newTeacherForm.email}
+                  onChange={(e) => setNewTeacherForm({ ...newTeacherForm, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="teacher-contact">Contact Number</Label>
+                <Input 
+                  id="teacher-contact" 
+                  placeholder="+63..." 
+                  className="mt-2"
+                  value={newTeacherForm.contact_number}
+                  onChange={(e) => setNewTeacherForm({ ...newTeacherForm, contact_number: e.target.value })}
+                />
+              </div>
             </div>
             <div>
-              <Label htmlFor="teacher-subjects">Assigned Subjects</Label>
-              <Textarea id="teacher-subjects" placeholder="List subjects (one per line)" className="mt-2" rows={4} />
+              <Label htmlFor="teacher-specialization">Specialization</Label>
+              <Input 
+                id="teacher-specialization" 
+                placeholder="e.g., Database Systems" 
+                className="mt-2"
+                value={newTeacherForm.specialization}
+                onChange={(e) => setNewTeacherForm({ ...newTeacherForm, specialization: e.target.value })}
+              />
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setAddTeacherOpen(false)}>
                 Cancel
               </Button>
-              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                Add Teacher
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleCreateTeacher}
+                disabled={loadingSection === 'create-teacher'}
+              >
+                {loadingSection === 'create-teacher' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add Teacher'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Teacher Dialog */}
+      <Dialog open={editTeacherOpen} onOpenChange={setEditTeacherOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Teacher</DialogTitle>
+            <DialogDescription>
+              Update teacher information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Faculty ID</Label>
+                <Input 
+                  value={editTeacherForm.faculty_id}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, faculty_id: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label>Department</Label>
+                <Input 
+                  value={editTeacherForm.department}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, department: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>First Name</Label>
+                <Input 
+                  value={editTeacherForm.first_name}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, first_name: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label>Last Name</Label>
+                <Input 
+                  value={editTeacherForm.last_name}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, last_name: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Email</Label>
+                <Input 
+                  type="email"
+                  value={editTeacherForm.email}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, email: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label>Contact Number</Label>
+                <Input 
+                  value={editTeacherForm.contact_number}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, contact_number: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={editTeacherForm.status}
+                onValueChange={(value) => setEditTeacherForm({ ...editTeacherForm, status: value })}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="On Leave">On Leave</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setEditTeacherOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleUpdateTeacher}
+                disabled={loadingSection === 'update-teacher'}
+              >
+                {loadingSection === 'update-teacher' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Teacher'
+                )}
               </Button>
             </div>
           </div>
@@ -2160,41 +2948,25 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       </Dialog>
 
       {/* Remove Teacher Dialog */}
-      <Dialog open={removeTeacherOpen} onOpenChange={setRemoveTeacherOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Teacher</DialogTitle>
-            <DialogDescription>
-              Select a teacher to remove
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Select Teacher</Label>
-              <Select>
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Choose teacher..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {teachers.map((teacher) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {teacher.name} - {teacher.department}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setRemoveTeacherOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive">
-                Remove Teacher
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AlertDialog open={removeTeacherOpen} onOpenChange={setRemoveTeacherOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete teacher {selectedStudent?.first_name} {selectedStudent?.last_name}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteTeacher}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Enrollment Request Dialog */}
       <Dialog open={editEnrollmentOpen} onOpenChange={setEditEnrollmentOpen}>

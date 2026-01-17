@@ -1,0 +1,81 @@
+import api, { handleApiError } from '../utils/api';
+
+class RegistrarService {
+  async getDashboardStats(): Promise<any> {
+    try {
+      const response = await api.get('/registrar/dashboard/stats');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  // CORs
+  async getAllCORs(filters?: {
+    status?: string;
+    studentId?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.get('/registrar/cors', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async generateCOR(enrollmentId: number): Promise<any> {
+    try {
+      const response = await api.post('/registrar/cors/generate', { enrollmentId });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async approveCOR(id: number): Promise<any> {
+    try {
+      const response = await api.put(`/registrar/cors/${id}/approve`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  // Clearances
+  async getAllClearances(filters?: {
+    status?: string;
+    clearance_type?: string;
+    studentId?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.get('/registrar/clearances', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async createClearance(clearanceData: {
+    student_id: number;
+    clearance_type: string;
+    issue_description?: string;
+  }): Promise<any> {
+    try {
+      const response = await api.post('/registrar/clearances', clearanceData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async resolveClearance(id: number, remarks?: string): Promise<any> {
+    try {
+      const response = await api.put(`/registrar/clearances/${id}/resolve`, { remarks });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+}
+
+export const registrarService = new RegistrarService();

@@ -10,6 +10,13 @@ import {
   updateEnrollmentStatus,
   getDashboardStats
 } from '../controllers/admin.controller';
+import {
+  getAllFaculty,
+  getFacultyById,
+  createFaculty,
+  updateFaculty,
+  deleteFaculty
+} from '../controllers/faculty.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
 const router = express.Router();
@@ -23,6 +30,13 @@ router.get('/students/:id', authenticate, authorize('admin', 'superadmin', 'dean
 router.post('/students', authenticate, authorize('admin', 'superadmin'), createStudent);
 router.put('/students/:id', authenticate, authorize('admin', 'superadmin'), updateStudent);
 router.delete('/students/:id', authenticate, authorize('superadmin'), deleteStudent);
+
+// Teachers (Faculty)
+router.get('/teachers', authenticate, authorize('admin', 'superadmin'), getAllFaculty);
+router.get('/teachers/:id', authenticate, authorize('admin', 'superadmin'), getFacultyById);
+router.post('/teachers', authenticate, authorize('admin', 'superadmin'), createFaculty);
+router.put('/teachers/:id', authenticate, authorize('admin', 'superadmin'), updateFaculty);
+router.delete('/teachers/:id', authenticate, authorize('admin', 'superadmin'), deleteFaculty);
 
 // Enrollments
 router.get('/enrollments', authenticate, authorize('admin', 'superadmin', 'dean', 'registrar'), getAllEnrollments);

@@ -163,48 +163,100 @@ export const createStudent = async (req: AuthRequest, res: Response) => {
 export const updateStudent = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const {
-      first_name,
-      middle_name,
-      last_name,
-      suffix,
-      student_type,
-      course,
-      year_level,
-      contact_number,
-      address,
-      birth_date,
-      gender,
-      status,
-      cor_status,
-      grades_complete,
-      clearance_status
-    } = req.body;
+    const updateData = req.body;
 
-    const gradesCompleteValue = grades_complete ? 1 : 0;
+    // Get current student data first
+    const currentStudent = await query('SELECT * FROM students WHERE id = ?', [id]);
+    if (currentStudent.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student = currentStudent[0];
+
+    // Build update fields dynamically - only update fields that are provided
+    const updateFields: string[] = [];
+    const values: any[] = [];
+
+    if (updateData.first_name !== undefined) {
+      updateFields.push('first_name = ?');
+      values.push(updateData.first_name);
+    }
+    if (updateData.middle_name !== undefined) {
+      updateFields.push('middle_name = ?');
+      values.push(updateData.middle_name);
+    }
+    if (updateData.last_name !== undefined) {
+      updateFields.push('last_name = ?');
+      values.push(updateData.last_name);
+    }
+    if (updateData.suffix !== undefined) {
+      updateFields.push('suffix = ?');
+      values.push(updateData.suffix);
+    }
+    if (updateData.student_type !== undefined) {
+      updateFields.push('student_type = ?');
+      values.push(updateData.student_type);
+    }
+    if (updateData.course !== undefined) {
+      updateFields.push('course = ?');
+      values.push(updateData.course);
+    }
+    if (updateData.year_level !== undefined) {
+      updateFields.push('year_level = ?');
+      values.push(updateData.year_level);
+    }
+    if (updateData.contact_number !== undefined) {
+      updateFields.push('contact_number = ?');
+      values.push(updateData.contact_number);
+    }
+    if (updateData.address !== undefined) {
+      updateFields.push('address = ?');
+      values.push(updateData.address);
+    }
+    if (updateData.birth_date !== undefined) {
+      updateFields.push('birth_date = ?');
+      values.push(updateData.birth_date);
+    }
+    if (updateData.gender !== undefined) {
+      updateFields.push('gender = ?');
+      values.push(updateData.gender);
+    }
+    if (updateData.status !== undefined) {
+      updateFields.push('status = ?');
+      values.push(updateData.status);
+    }
+    if (updateData.cor_status !== undefined) {
+      updateFields.push('cor_status = ?');
+      values.push(updateData.cor_status);
+    }
+    if (updateData.grades_complete !== undefined) {
+      updateFields.push('grades_complete = ?');
+      values.push(updateData.grades_complete ? 1 : 0);
+    }
+    if (updateData.clearance_status !== undefined) {
+      updateFields.push('clearance_status = ?');
+      values.push(updateData.clearance_status);
+    }
+
+    // Always update updated_at
+    updateFields.push('updated_at = datetime(\'now\')');
+
+    if (updateFields.length === 1) {
+      // Only updated_at would be updated, which means no actual fields to update
+      return res.json({
+        success: true,
+        message: 'No fields to update'
+      });
+    }
+
+    values.push(id);
 
     await run(
-      `UPDATE students SET 
-        first_name = ?,
-        middle_name = ?,
-        last_name = ?,
-        suffix = ?,
-        student_type = ?,
-        course = ?,
-        year_level = ?,
-        contact_number = ?,
-        address = ?,
-        birth_date = ?,
-        gender = ?,
-        cor_status = ?,
-        grades_complete = ?,
-        clearance_status = ?,
-        status = ?,
-        updated_at = datetime('now')
-      WHERE id = ?`,
-      [first_name, middle_name, last_name, suffix, student_type, course,
-       year_level, contact_number, address, birth_date, gender,
-       cor_status, gradesCompleteValue, clearance_status, status, id]
+      `UPDATE students SET ${updateFields.join(', ')} WHERE id = ?`,
+      values
     );
 
     res.json({

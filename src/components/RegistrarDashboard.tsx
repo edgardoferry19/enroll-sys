@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { 
   LogOut, 
@@ -13,7 +13,10 @@ import {
   Filter,
   Eye,
   Edit,
-  CheckCircle
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -22,6 +25,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { registrarService } from '../services/registrar.service';
+import { adminService } from '../services/admin.service';
+import { gradesService } from '../services/grades.service';
 
 interface RegistrarDashboardProps {
   onLogout: () => void;
@@ -29,204 +42,341 @@ interface RegistrarDashboardProps {
 
 export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps) {
   const [activeSection, setActiveSection] = useState('Dashboard');
+  const [loading, setLoading] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [studentRecords, setStudentRecords] = useState<any[]>([]);
+  const [corRequests, setCorRequests] = useState<any[]>([]);
+  const [clearanceRequests, setClearanceRequests] = useState<any[]>([]);
+  const [gradeSubmissions, setGradeSubmissions] = useState<any[]>([]);
+  const [error, setError] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const stats = [
+  useEffect(() => {
+    fetchData();
+  }, [activeSection]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      if (activeSection === 'Dashboard') {
+        const statsResponse = await registrarService.getDashboardStats();
+        if (statsResponse.success) {
+          setDashboardStats(statsResponse.data);
+        }
+        // Fetch recent CORs and clearances for dashboard
+        const corsResponse = await registrarService.getAllCORs({ status: 'Pending' });
+        if (corsResponse.success) {
+          setCorRequests(corsResponse.data?.slice(0, 5) || []);
+        }
+        const clearancesResponse = await registrarService.getAllClearances({ status: 'Pending' });
+        if (clearancesResponse.success) {
+          setClearanceRequests(clearancesResponse.data?.slice(0, 5) || []);
+        }
+      } else if (activeSection === 'Student Records') {
+        const studentsResponse = await adminService.getAllStudents();
+        if (studentsResponse.success) {
+          setStudentRecords(studentsResponse.data || []);
+        }
+      } else if (activeSection === 'COR Management') {
+        const corsResponse = await registrarService.getAllCORs();
+        if (corsResponse.success) {
+          setCorRequests(corsResponse.data || []);
+        }
+      } else if (activeSection === 'Clearances') {
+        const clearancesResponse = await registrarService.getAllClearances();
+        if (clearancesResponse.success) {
+          setClearanceRequests(clearancesResponse.data || []);
+        }
+      } else if (activeSection === 'Grades Management') {
+        // For now, we'll show placeholder. In a real system, this would fetch from enrollment_subjects
+        setGradeSubmissions([]);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch data');
+      console.error('Fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateCOR = async (enrollmentId: number) => {
+    try {
+      setError('');
+      await registrarService.generateCOR(enrollmentId);
+      fetchData();
+      alert('COR generated successfully!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate COR');
+    }
+  };
+
+  const handleApproveCOR = async (corId: number) => {
+    try {
+      setError('');
+      await registrarService.approveCOR(corId);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to approve COR');
+    }
+  };
+
+  const handleResolveClearance = async (clearanceId: number) => {
+    try {
+      setError('');
+      await registrarService.resolveClearance(clearanceId);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to resolve clearance');
+    }
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} mins ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} days ago`;
+  };
+
+  const stats = dashboardStats ? [
     { 
       label: 'Total Records', 
-      value: '1,243', 
+      value: dashboardStats.totalRecords?.toString() || '0', 
       icon: FileText, 
       color: 'from-blue-500 to-blue-600',
-      change: '+45'
+      change: ''
     },
     { 
       label: 'Pending Grades', 
-      value: '28', 
+      value: dashboardStats.pendingGrades?.toString() || '0', 
       icon: ClipboardCheck, 
       color: 'from-orange-500 to-orange-600',
-      change: '12 urgent'
+      change: ''
     },
     { 
       label: 'COR Requests', 
-      value: '15', 
+      value: dashboardStats.corRequests?.toString() || '0', 
       icon: Award, 
       color: 'from-green-500 to-green-600',
-      change: '+8'
+      change: ''
     },
     { 
       label: 'Clearances', 
-      value: '42', 
+      value: dashboardStats.clearances?.toString() || '0', 
       icon: CheckCircle, 
       color: 'from-purple-500 to-purple-600',
-      change: '18 pending'
+      change: ''
     },
-  ];
+  ] : [];
 
-  const studentRecords = [
-    { id: '2024-001', name: 'Juan Dela Cruz', course: 'BSIT', year: '2nd Year', gpa: 1.6, status: 'Regular', clearance: 'Clear' },
-    { id: '2024-002', name: 'Maria Santos', course: 'BSCS', year: '3rd Year', gpa: 1.4, status: 'Regular', clearance: 'Clear' },
-    { id: '2024-003', name: 'Jose Reyes', course: 'BSIT', year: '1st Year', gpa: 1.9, status: 'Regular', clearance: 'Pending' },
-    { id: '2024-004', name: 'Ana Garcia', course: 'BSCpE', year: '4th Year', gpa: 1.3, status: 'Regular', clearance: 'Clear' },
-  ];
+  const renderDashboardContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
 
-  const corRequests = [
-    { id: 'COR-001', student: 'Juan Dela Cruz', studentId: '2024-001', course: 'BSIT', semester: '1st Sem 2024-2025', status: 'Pending', date: 'Dec 10, 2024' },
-    { id: 'COR-002', student: 'Maria Santos', studentId: '2024-002', course: 'BSCS', semester: '1st Sem 2024-2025', status: 'Pending', date: 'Dec 10, 2024' },
-    { id: 'COR-003', student: 'Jose Reyes', studentId: '2024-003', course: 'BSIT', semester: '1st Sem 2024-2025', status: 'Approved', date: 'Dec 9, 2024' },
-  ];
-
-  const gradeSubmissions = [
-    { id: 'GS-001', faculty: 'Dr. Roberto Santos', subject: 'CS101 - Introduction to Programming', section: 'IT-2A', students: 35, status: 'Submitted', date: 'Dec 8, 2024' },
-    { id: 'GS-002', faculty: 'Prof. Maria Reyes', subject: 'MATH201 - Calculus I', section: 'CS-3B', students: 30, status: 'Pending', date: 'Overdue' },
-    { id: 'GS-003', faculty: 'Ms. Jennifer Garcia', subject: 'ENG101 - Technical Writing', section: 'IT-1A', students: 32, status: 'Submitted', date: 'Dec 7, 2024' },
-  ];
-
-  const clearanceRequests = [
-    { id: 'CLR-001', student: 'Jose Reyes', studentId: '2024-003', type: 'Library', status: 'Pending', issue: 'Unreturned books', date: 'Dec 9, 2024' },
-    { id: 'CLR-002', student: 'Carlos Rodriguez', studentId: '2024-005', type: 'Finance', status: 'Pending', issue: 'Unpaid fees', date: 'Dec 8, 2024' },
-  ];
-
-  const renderDashboardContent = () => (
-    <>
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={index} className="p-6 border-0 shadow-lg hover:shadow-xl transition-all bg-white">
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-md`}>
-                  <Icon className="h-6 w-6 text-white" />
-                </div>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-0">
-                  {stat.change}
-                </Badge>
-              </div>
-              <h3 className="text-3xl mb-1">{stat.value}</h3>
-              <p className="text-sm text-slate-600">{stat.label}</p>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent COR Requests */}
-        <Card className="border-0 shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
-            <h3 className="text-white">Recent COR Requests</h3>
+    if (error) {
+      return (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <p>{error}</p>
           </div>
-          <ScrollArea className="h-[400px]">
-            <div className="p-4">
-              <div className="space-y-3">
-                {corRequests.map((request) => (
-                  <div key={request.id} className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="text-sm text-slate-900">{request.student}</p>
-                        <p className="text-xs text-slate-500">{request.studentId} • {request.course}</p>
-                      </div>
-                      <Badge className={request.status === 'Approved' ? 'bg-green-100 text-green-700 border-0 text-xs' : 'bg-orange-100 text-orange-700 border-0 text-xs'}>
-                        {request.status}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-slate-600">{request.semester}</p>
-                    <p className="text-xs text-slate-400 mt-1">{request.date}</p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {stats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={index} className="p-6 border-0 shadow-lg hover:shadow-xl transition-all bg-white">
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-md`}>
+                    <Icon className="h-6 w-6 text-white" />
                   </div>
-                ))}
-              </div>
-            </div>
-          </ScrollArea>
-        </Card>
+                  {stat.change && (
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-0">
+                      {stat.change}
+                    </Badge>
+                  )}
+                </div>
+                <h3 className="text-3xl mb-1">{stat.value}</h3>
+                <p className="text-sm text-slate-600">{stat.label}</p>
+              </Card>
+            );
+          })}
+        </div>
 
-        {/* Grade Submissions */}
-        <Card className="border-0 shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-            <h3 className="text-white">Grade Submissions</h3>
+        {/* Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent COR Requests */}
+          <Card className="border-0 shadow-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4">
+              <h3 className="text-white">Recent COR Requests</h3>
+            </div>
+            <ScrollArea className="h-[400px]">
+              <div className="p-4">
+                {corRequests.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-8">No COR requests</p>
+                ) : (
+                  <div className="space-y-3">
+                    {corRequests.map((request) => (
+                      <div key={request.id} className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-sm text-slate-900">{request.student_name}</p>
+                            <p className="text-xs text-slate-500">{request.student_id} • {request.course}</p>
+                          </div>
+                          <Badge className={request.status === 'Approved' || request.status === 'Generated' ? 'bg-green-100 text-green-700 border-0 text-xs' : 'bg-orange-100 text-orange-700 border-0 text-xs'}>
+                            {request.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-600">{request.semester}</p>
+                        <p className="text-xs text-slate-400 mt-1">{formatTimeAgo(request.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </Card>
+
+          {/* Clearance Requests */}
+          <Card className="border-0 shadow-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+              <h3 className="text-white">Pending Clearances</h3>
+            </div>
+            <ScrollArea className="h-[400px]">
+              <div className="p-4">
+                {clearanceRequests.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-8">No pending clearances</p>
+                ) : (
+                  <div className="space-y-3">
+                    {clearanceRequests.map((clearance) => (
+                      <div key={clearance.id} className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-900">{clearance.student_name}</p>
+                            <p className="text-xs text-slate-500">{clearance.student_id}</p>
+                            <p className="text-xs text-slate-600 mt-1">{clearance.clearance_type}</p>
+                            {clearance.issue_description && (
+                              <p className="text-xs text-orange-600 mt-1">{clearance.issue_description}</p>
+                            )}
+                          </div>
+                          <Badge className="bg-orange-100 text-orange-700 border-0 text-xs">
+                            {clearance.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">{formatTimeAgo(clearance.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </Card>
+        </div>
+      </>
+    );
+  };
+
+  const renderStudentRecordsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    const filteredRecords = studentRecords.filter((student) => {
+      if (!searchTerm) return true;
+      const search = searchTerm.toLowerCase();
+      return (
+        student.student_id?.toLowerCase().includes(search) ||
+        student.first_name?.toLowerCase().includes(search) ||
+        student.last_name?.toLowerCase().includes(search) ||
+        student.course?.toLowerCase().includes(search)
+      );
+    });
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
           </div>
-          <ScrollArea className="h-[400px]">
-            <div className="p-4">
+        )}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex gap-2 flex-1 max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input 
+                placeholder="Search student records..." 
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            {filteredRecords.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No student records found</p>
+            ) : (
               <div className="space-y-3">
-                {gradeSubmissions.map((submission) => (
-                  <div key={submission.id} className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div className="flex items-start justify-between mb-2">
+                {filteredRecords.map((student) => (
+                  <div key={student.id} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <p className="text-sm text-slate-900">{submission.subject}</p>
-                        <p className="text-xs text-slate-500">{submission.faculty} • {submission.section}</p>
-                        <p className="text-xs text-slate-600 mt-1">{submission.students} students</p>
-                        <p className="text-xs text-slate-400 mt-1">{submission.date}</p>
+                        <h4 className="text-slate-900">{student.first_name} {student.last_name}</h4>
+                        <p className="text-sm text-slate-500">{student.student_id} • {student.course} • Year {student.year_level}</p>
+                        <div className="flex gap-2 mt-2">
+                          <Badge className={student.clearance_status === 'Clear' ? 'bg-green-100 text-green-700 border-0' : 'bg-orange-100 text-orange-700 border-0'}>
+                            {student.clearance_status || 'Clear'}
+                          </Badge>
+                          <Badge variant="secondary">{student.status || 'Active'}</Badge>
+                        </div>
                       </div>
-                      <Badge className={submission.status === 'Submitted' ? 'bg-green-100 text-green-700 border-0 text-xs' : 'bg-red-100 text-red-700 border-0 text-xs'}>
-                        {submission.status}
-                      </Badge>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button size="sm" variant="outline">
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          </ScrollArea>
+            )}
+          </div>
         </Card>
       </div>
-    </>
-  );
-
-  const renderStudentRecordsContent = () => (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex gap-2 flex-1 max-w-md">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input 
-              placeholder="Search student records..." 
-              className="pl-10"
-            />
-          </div>
-          <Button variant="outline">
-            <Filter className="h-4 w-4" />
-          </Button>
-        </div>
-        <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-          <Download className="h-4 w-4 mr-2" />
-          Export
-        </Button>
-      </div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <div className="space-y-3">
-            {studentRecords.map((student) => (
-              <div key={student.id} className="p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h4 className="text-slate-900">{student.name}</h4>
-                    <p className="text-sm text-slate-500">{student.id} • {student.course} • {student.year}</p>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="secondary">GPA: {student.gpa}</Badge>
-                      <Badge className={student.clearance === 'Clear' ? 'bg-green-100 text-green-700 border-0' : 'bg-orange-100 text-orange-700 border-0'}>
-                        {student.clearance}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Printer className="h-4 w-4 mr-1" />
-                      Print
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
+    );
+  };
 
   const renderGradesManagementContent = () => (
     <div>
@@ -300,102 +450,145 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
     </div>
   );
 
-  const renderCORManagementContent = () => (
-    <div>
-      <div className="flex justify-end mb-6">
-        <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-          <Download className="h-4 w-4 mr-2" />
-          Export All CORs
-        </Button>
-      </div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <div className="space-y-4">
-            {corRequests.map((request) => (
-              <div key={request.id} className="p-4 border rounded-lg hover:bg-slate-50">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h4 className="text-slate-900">{request.student}</h4>
-                    <p className="text-sm text-slate-500">{request.id} • {request.studentId}</p>
-                    <p className="text-sm text-slate-600 mt-2">{request.course} • {request.semester}</p>
-                    <p className="text-xs text-slate-400 mt-1">{request.date}</p>
-                  </div>
-                  <Badge className={request.status === 'Approved' ? 'bg-green-100 text-green-700 border-0' : 'bg-orange-100 text-orange-700 border-0'}>
-                    {request.status}
-                  </Badge>
-                </div>
-                {request.status === 'Pending' && (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      <Eye className="h-4 w-4 mr-1" />
-                      Preview
-                    </Button>
-                    <Button size="sm" className="bg-gradient-to-r from-green-600 to-green-700">
-                      Approve & Generate
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Printer className="h-4 w-4 mr-1" />
-                      Print
-                    </Button>
-                  </div>
-                )}
-                {request.status === 'Approved' && (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      <Eye className="h-4 w-4 mr-1" />
-                      View COR
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Printer className="h-4 w-4 mr-1" />
-                      Reprint
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+  const renderCORManagementContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
-      </Card>
-    </div>
-  );
+      );
+    }
 
-  const renderClearanceContent = () => (
-    <div>
-      <Card className="border-0 shadow-lg">
-        <div className="p-6">
-          <p className="text-slate-600 mb-6">Manage student clearances and requirements.</p>
-          <div className="space-y-4">
-            {clearanceRequests.map((clearance) => (
-              <div key={clearance.id} className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h4 className="text-slate-900">{clearance.student}</h4>
-                    <p className="text-sm text-slate-500">{clearance.id} • {clearance.studentId}</p>
-                    <div className="mt-2">
-                      <Badge variant="secondary">{clearance.type}</Badge>
-                    </div>
-                    <p className="text-sm text-orange-700 mt-2">Issue: {clearance.issue}</p>
-                    <p className="text-xs text-slate-400 mt-1">{clearance.date}</p>
-                  </div>
-                  <Badge className="bg-orange-100 text-orange-700 border-0">
-                    {clearance.status}
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline">
-                    Contact Student
-                  </Button>
-                  <Button size="sm" className="bg-gradient-to-r from-green-600 to-green-700">
-                    Mark Resolved
-                  </Button>
-                </div>
-              </div>
-            ))}
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
           </div>
+        )}
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            {corRequests.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No COR requests found</p>
+            ) : (
+              <div className="space-y-4">
+                {corRequests.map((request) => (
+                  <div key={request.id} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="text-slate-900">{request.student_name}</h4>
+                        <p className="text-sm text-slate-500">{request.cor_number || `COR-${request.id}`} • {request.student_id}</p>
+                        <p className="text-sm text-slate-600 mt-2">{request.course} • {request.semester}</p>
+                        <p className="text-xs text-slate-400 mt-1">{formatTimeAgo(request.created_at)}</p>
+                      </div>
+                      <Badge className={request.status === 'Approved' || request.status === 'Generated' ? 'bg-green-100 text-green-700 border-0' : 'bg-orange-100 text-orange-700 border-0'}>
+                        {request.status}
+                      </Badge>
+                    </div>
+                    {request.status === 'Pending' && (
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          className="bg-gradient-to-r from-green-600 to-green-700"
+                          onClick={() => handleGenerateCOR(request.enrollment_id)}
+                        >
+                          Generate COR
+                        </Button>
+                      </div>
+                    )}
+                    {(request.status === 'Generated' || request.status === 'Approved') && (
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleApproveCOR(request.id)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="outline">
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderClearanceContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
-      </Card>
-    </div>
-  );
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            <p className="text-slate-600 mb-6">Manage student clearances and requirements.</p>
+            {clearanceRequests.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No clearance requests found</p>
+            ) : (
+              <div className="space-y-4">
+                {clearanceRequests.map((clearance) => (
+                  <div key={clearance.id} className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="text-slate-900">{clearance.student_name}</h4>
+                        <p className="text-sm text-slate-500">ID: {clearance.id} • {clearance.student_id}</p>
+                        <div className="mt-2">
+                          <Badge variant="secondary">{clearance.clearance_type}</Badge>
+                        </div>
+                        {clearance.issue_description && (
+                          <p className="text-sm text-orange-700 mt-2">Issue: {clearance.issue_description}</p>
+                        )}
+                        <p className="text-xs text-slate-400 mt-1">{formatTimeAgo(clearance.created_at)}</p>
+                      </div>
+                      <Badge className="bg-orange-100 text-orange-700 border-0">
+                        {clearance.status}
+                      </Badge>
+                    </div>
+                    {clearance.status === 'Pending' && (
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          className="bg-gradient-to-r from-green-600 to-green-700"
+                          onClick={() => handleResolveClearance(clearance.id)}
+                        >
+                          Mark Resolved
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
