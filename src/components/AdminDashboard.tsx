@@ -112,7 +112,27 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     capacity: 50,
     adviser_id: 0
   });
+  const [editSectionForm, setEditSectionForm] = useState({
+    section_code: '',
+    section_name: '',
+    course: '',
+    year_level: 1,
+    school_year: '',
+    semester: '1st',
+    capacity: 50,
+    adviser_id: 0
+  });
   const [newSubjectForm, setNewSubjectForm] = useState({
+    subject_code: '',
+    subject_name: '',
+    description: '',
+    units: 3,
+    course: '',
+    year_level: 1,
+    semester: '1st',
+    subject_type: 'College' as 'SHS' | 'College'
+  });
+  const [editSubjectForm, setEditSubjectForm] = useState({
     subject_code: '',
     subject_name: '',
     description: '',
@@ -130,12 +150,26 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     enrollment_end: '',
     is_active: false
   });
+  const [editSchoolYearForm, setEditSchoolYearForm] = useState({
+    school_year: '',
+    start_date: '',
+    end_date: '',
+    enrollment_start: '',
+    enrollment_end: '',
+    is_active: false
+  });
+  const [editingSection, setEditingSection] = useState<any>(null);
+  const [editingSubject, setEditingSubject] = useState<any>(null);
+  const [editingSchoolYear, setEditingSchoolYear] = useState<any>(null);
   const [viewGradesOpen, setViewGradesOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [editSectionOpen, setEditSectionOpen] = useState(false);
   const [removeSectionOpen, setRemoveSectionOpen] = useState(false);
   const [addSubjectOpen, setAddSubjectOpen] = useState(false);
+  const [editSubjectOpen, setEditSubjectOpen] = useState(false);
   const [removeSubjectOpen, setRemoveSubjectOpen] = useState(false);
+  const [editSchoolYearOpen, setEditSchoolYearOpen] = useState(false);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('2024-2025');
   const [editGradesOpen, setEditGradesOpen] = useState(false);
   const [updateStudentOpen, setUpdateStudentOpen] = useState(false);
@@ -627,6 +661,80 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       await fetchDashboardData();
     } catch (err: any) {
       setError(err.message || 'Failed to create school year');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleUpdateSection = async () => {
+    if (!editingSection) return;
+    try {
+      setError('');
+      setLoadingSection('update-section');
+      await maintenanceService.updateSection(editingSection.id, editSectionForm);
+      setEditSectionOpen(false);
+      setEditingSection(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update section');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleUpdateSubject = async () => {
+    if (!editingSubject) return;
+    try {
+      setError('');
+      setLoadingSection('update-subject');
+      await maintenanceService.updateSubject(editingSubject.id, editSubjectForm);
+      setEditSubjectOpen(false);
+      setEditingSubject(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update subject');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleUpdateSchoolYear = async () => {
+    if (!editingSchoolYear) return;
+    try {
+      setError('');
+      setLoadingSection('update-school-year');
+      await maintenanceService.updateSchoolYear(editingSchoolYear.id, editSchoolYearForm);
+      setEditSchoolYearOpen(false);
+      setEditingSchoolYear(null);
+      await fetchDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update school year');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleSaveGrades = async () => {
+    if (!selectedStudent?.grades) return;
+    try {
+      setError('');
+      setLoadingSection('save-grades');
+      // Convert grades array to the format expected by the API
+      const gradesToUpdate = selectedStudent.grades.map((g: any, index: number) => ({
+        enrollment_subject_id: g.enrollment_subject_id || index + 1,
+        grade: g.grade
+      }));
+      
+      // Use bulk update if available
+      if (gradesToUpdate.length > 0) {
+        await gradesService.bulkUpdateGrades(gradesToUpdate);
+        alert('Grades updated successfully');
+        setEditGradesOpen(false);
+        await fetchDashboardData();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update grades');
+      alert(err.message || 'Failed to update grades');
     } finally {
       setLoadingSection(null);
     }
@@ -1378,7 +1486,24 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          setEditingSection(section);
+                          setEditSectionForm({
+                            section_code: section.section_code || '',
+                            section_name: section.section_name || '',
+                            course: section.course || '',
+                            year_level: section.year_level || 1,
+                            school_year: section.school_year || '',
+                            semester: section.semester || '1st',
+                            capacity: section.capacity || 50,
+                            adviser_id: section.adviser_id || 0
+                          });
+                          setEditSectionOpen(true);
+                        }}
+                      >
                         <Edit className="h-4 w-4 mr-2" />
                         Edit
                       </Button>
@@ -1463,7 +1588,24 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          setEditingSubject(subject);
+                          setEditSubjectForm({
+                            subject_code: subject.subject_code || '',
+                            subject_name: subject.subject_name || '',
+                            description: subject.description || '',
+                            units: subject.units || 3,
+                            course: subject.course || '',
+                            year_level: subject.year_level || 1,
+                            semester: subject.semester || '1st',
+                            subject_type: subject.subject_type || type
+                          });
+                          setEditSubjectOpen(true);
+                        }}
+                      >
                         <Edit className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
@@ -1563,7 +1705,22 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            setEditingSchoolYear(sy);
+                            setEditSchoolYearForm({
+                              school_year: sy.school_year || '',
+                              start_date: sy.start_date || '',
+                              end_date: sy.end_date || '',
+                              enrollment_start: sy.enrollment_start || '',
+                              enrollment_end: sy.enrollment_end || '',
+                              is_active: sy.is_active === 1
+                            });
+                            setEditSchoolYearOpen(true);
+                          }}
+                        >
                           <Edit className="h-4 w-4 mr-1" />
                           Edit
                         </Button>
@@ -2023,8 +2180,19 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 <Button variant="outline" onClick={() => setEditGradesOpen(false)}>
                   Cancel
                 </Button>
-                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                  Save Changes
+                <Button 
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                  onClick={handleSaveGrades}
+                  disabled={loadingSection === 'save-grades'}
+                >
+                  {loadingSection === 'save-grades' ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
                 </Button>
               </div>
             </div>
@@ -3227,6 +3395,371 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Section Dialog */}
+      <Dialog open={editSectionOpen} onOpenChange={setEditSectionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Section</DialogTitle>
+            <DialogDescription>
+              Update section information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-section-code">Section Code</Label>
+                <Input 
+                  id="edit-section-code" 
+                  className="mt-2"
+                  value={editSectionForm.section_code}
+                  onChange={(e) => setEditSectionForm({ ...editSectionForm, section_code: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-section-name">Section Name</Label>
+                <Input 
+                  id="edit-section-name" 
+                  className="mt-2"
+                  value={editSectionForm.section_name}
+                  onChange={(e) => setEditSectionForm({ ...editSectionForm, section_name: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-section-course">Course/Program</Label>
+                <Input 
+                  id="edit-section-course" 
+                  className="mt-2"
+                  value={editSectionForm.course}
+                  onChange={(e) => setEditSectionForm({ ...editSectionForm, course: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-section-year">Year Level</Label>
+                <Input 
+                  id="edit-section-year" 
+                  type="number"
+                  min="1"
+                  max="4"
+                  className="mt-2"
+                  value={editSectionForm.year_level}
+                  onChange={(e) => setEditSectionForm({ ...editSectionForm, year_level: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-section-school-year">School Year</Label>
+                <Input 
+                  id="edit-section-school-year" 
+                  className="mt-2"
+                  value={editSectionForm.school_year}
+                  onChange={(e) => setEditSectionForm({ ...editSectionForm, school_year: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-section-semester">Semester</Label>
+                <Select
+                  value={editSectionForm.semester}
+                  onValueChange={(value) => setEditSectionForm({ ...editSectionForm, semester: value })}
+                >
+                  <SelectTrigger id="edit-section-semester" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1st">1st Semester</SelectItem>
+                    <SelectItem value="2nd">2nd Semester</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-section-capacity">Capacity</Label>
+              <Input 
+                id="edit-section-capacity" 
+                type="number"
+                className="mt-2"
+                value={editSectionForm.capacity}
+                onChange={(e) => setEditSectionForm({ ...editSectionForm, capacity: parseInt(e.target.value) || 50 })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-section-adviser">Adviser (Optional)</Label>
+              <Select
+                value={editSectionForm.adviser_id.toString()}
+                onValueChange={(value) => setEditSectionForm({ ...editSectionForm, adviser_id: parseInt(value) || 0 })}
+              >
+                <SelectTrigger id="edit-section-adviser" className="mt-2">
+                  <SelectValue placeholder="Select adviser (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">None</SelectItem>
+                  {teachers.map((teacher) => (
+                    <SelectItem key={teacher.id} value={teacher.id.toString()}>
+                      {teacher.first_name} {teacher.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setEditSectionOpen(false);
+                setEditingSection(null);
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleUpdateSection}
+                disabled={loadingSection === 'update-section'}
+              >
+                {loadingSection === 'update-section' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Section'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Subject Dialog */}
+      <Dialog open={editSubjectOpen} onOpenChange={setEditSubjectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Subject</DialogTitle>
+            <DialogDescription>
+              Update subject information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-subject-type">Subject Type</Label>
+              <Select
+                value={editSubjectForm.subject_type}
+                onValueChange={(value: 'SHS' | 'College') => setEditSubjectForm({ ...editSubjectForm, subject_type: value })}
+              >
+                <SelectTrigger id="edit-subject-type" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SHS">SHS</SelectItem>
+                  <SelectItem value="College">College</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-subject-code">Subject Code</Label>
+              <Input 
+                id="edit-subject-code" 
+                className="mt-2"
+                value={editSubjectForm.subject_code}
+                onChange={(e) => setEditSubjectForm({ ...editSubjectForm, subject_code: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-subject-name">Subject Name</Label>
+              <Input 
+                id="edit-subject-name" 
+                className="mt-2"
+                value={editSubjectForm.subject_name}
+                onChange={(e) => setEditSubjectForm({ ...editSubjectForm, subject_name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-subject-units">Units</Label>
+                <Input 
+                  id="edit-subject-units" 
+                  type="number" 
+                  className="mt-2"
+                  value={editSubjectForm.units}
+                  onChange={(e) => setEditSubjectForm({ ...editSubjectForm, units: parseInt(e.target.value) || 3 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-subject-course">Course (Optional)</Label>
+                <Input 
+                  id="edit-subject-course" 
+                  className="mt-2"
+                  value={editSubjectForm.course}
+                  onChange={(e) => setEditSubjectForm({ ...editSubjectForm, course: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-subject-year">Year Level (Optional)</Label>
+                <Input 
+                  id="edit-subject-year" 
+                  type="number"
+                  min="1"
+                  max="4"
+                  className="mt-2"
+                  value={editSubjectForm.year_level}
+                  onChange={(e) => setEditSubjectForm({ ...editSubjectForm, year_level: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-subject-semester">Semester (Optional)</Label>
+                <Select
+                  value={editSubjectForm.semester}
+                  onValueChange={(value) => setEditSubjectForm({ ...editSubjectForm, semester: value })}
+                >
+                  <SelectTrigger id="edit-subject-semester" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1st">1st Semester</SelectItem>
+                    <SelectItem value="2nd">2nd Semester</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-subject-description">Description (Optional)</Label>
+              <Textarea 
+                id="edit-subject-description" 
+                className="mt-2"
+                rows={3}
+                value={editSubjectForm.description}
+                onChange={(e) => setEditSubjectForm({ ...editSubjectForm, description: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setEditSubjectOpen(false);
+                setEditingSubject(null);
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleUpdateSubject}
+                disabled={loadingSection === 'update-subject'}
+              >
+                {loadingSection === 'update-subject' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Subject'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit School Year Dialog */}
+      <Dialog open={editSchoolYearOpen} onOpenChange={setEditSchoolYearOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit School Year</DialogTitle>
+            <DialogDescription>
+              Update school year information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-sy-year">School Year</Label>
+              <Input 
+                id="edit-sy-year" 
+                placeholder="2024-2025" 
+                className="mt-2"
+                value={editSchoolYearForm.school_year}
+                onChange={(e) => setEditSchoolYearForm({ ...editSchoolYearForm, school_year: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-sy-start">Start Date</Label>
+                <Input 
+                  id="edit-sy-start" 
+                  type="date"
+                  className="mt-2"
+                  value={editSchoolYearForm.start_date}
+                  onChange={(e) => setEditSchoolYearForm({ ...editSchoolYearForm, start_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-sy-end">End Date</Label>
+                <Input 
+                  id="edit-sy-end" 
+                  type="date"
+                  className="mt-2"
+                  value={editSchoolYearForm.end_date}
+                  onChange={(e) => setEditSchoolYearForm({ ...editSchoolYearForm, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-sy-enroll-start">Enrollment Start</Label>
+                <Input 
+                  id="edit-sy-enroll-start" 
+                  type="date"
+                  className="mt-2"
+                  value={editSchoolYearForm.enrollment_start}
+                  onChange={(e) => setEditSchoolYearForm({ ...editSchoolYearForm, enrollment_start: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-sy-enroll-end">Enrollment End</Label>
+                <Input 
+                  id="edit-sy-enroll-end" 
+                  type="date"
+                  className="mt-2"
+                  value={editSchoolYearForm.enrollment_end}
+                  onChange={(e) => setEditSchoolYearForm({ ...editSchoolYearForm, enrollment_end: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox 
+                id="edit-sy-active" 
+                checked={editSchoolYearForm.is_active}
+                onCheckedChange={(checked) => setEditSchoolYearForm({ ...editSchoolYearForm, is_active: checked === true })}
+              />
+              <Label htmlFor="edit-sy-active" className="cursor-pointer">
+                Set as active school year
+              </Label>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setEditSchoolYearOpen(false);
+                setEditingSchoolYear(null);
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleUpdateSchoolYear}
+                disabled={loadingSection === 'update-school-year'}
+              >
+                {loadingSection === 'update-school-year' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update School Year'
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

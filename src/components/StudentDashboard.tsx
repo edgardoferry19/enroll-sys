@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { 
   User, 
@@ -21,11 +21,8 @@ import {
 import { enrollmentService } from '../services/enrollment.service';
 import { studentService } from '../services/student.service';
 import { subjectService } from '../services/subject.service';
-import { Calendar } from './ui/calendar';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
-import { ScrollArea } from './ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
@@ -60,9 +57,25 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [schedule, setSchedule] = useState<any[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [enrollmentDetails, setEnrollmentDetails] = useState<any>(null);
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File>>({});
   const [schoolYear, setSchoolYear] = useState('2024-2025');
   const [semester, setSemester] = useState('1st Semester');
+  const [profileForm, setProfileForm] = useState({
+    first_name: '',
+    middle_name: '',
+    last_name: '',
+    suffix: '',
+    contact_number: '',
+    address: '',
+    birth_date: '',
+    gender: '',
+    username: ''
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   // Fetch student data on mount
   useEffect(() => {
@@ -75,7 +88,23 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       
       // Fetch student profile
       const profile = await studentService.getProfile();
-      setStudentProfile(profile.student);
+      const student = profile.student || profile.data?.student || profile;
+      setStudentProfile(student);
+      
+      // Update profile form with fetched data
+      if (student) {
+        setProfileForm({
+          first_name: student.first_name || '',
+          middle_name: student.middle_name || '',
+          last_name: student.last_name || '',
+          suffix: student.suffix || '',
+          contact_number: student.contact_number || '',
+          address: student.address || '',
+          birth_date: student.birth_date || '',
+          gender: student.gender || '',
+          username: student.username || ''
+        });
+      }
       
       // Fetch enrollments
       const enrollmentsData = await enrollmentService.getMyEnrollments();
@@ -97,14 +126,16 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
         
         // Fetch enrollment details with subjects
         const details = await enrollmentService.getEnrollmentDetails(current.id);
-        const subjects = details.enrollment?.enrollment_subjects || [];
+        setEnrollmentDetails(details.enrollment || details);
+        const subjects = (details.enrollment?.enrollment_subjects || details.enrollment_subjects || []);
         setCurrentCourses(subjects.map((es: any) => ({
           code: es.subject?.subject_code || '',
           name: es.subject?.subject_name || '',
           instructor: es.instructor || 'TBA',
           units: es.subject?.units || 0,
           schedule: es.schedule || '',
-          room: es.room || ''
+          room: es.room || '',
+          subject_id: es.subject_id || es.subject?.id
         })));
         
         // Build schedule from subjects
@@ -234,148 +265,124 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     setHasNewNotification(false);
   };
 
-  const renderDashboardContent = () => (
-    <div className="space-y-4">
-      {/* Approval Notification */}
-      {enrollmentStatus === 'approved' && showNotification && (
-        <Alert className="bg-green-50 border-green-200">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          <AlertTitle className="text-green-900">Pre-Enrollment Approved!</AlertTitle>
-          <AlertDescription className="text-green-700">
-            Your pre-enrollment has been approved. You can now add subjects in the Subjects tab and proceed to payment.
-          </AlertDescription>
-        </Alert>
-      )}
+  const handleUpdateProfile = async () => {
+    try {
+      setLoading(true);
+      await studentService.updateProfile(profileForm);
+      alert('Profile updated successfully');
+      await fetchStudentData();
+    } catch (error: any) {
+      alert(error.message || 'Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      {/* Pending Status Alert */}
-      {enrollmentStatus === 'pending' && (
-        <Alert className="bg-orange-50 border-orange-200">
-          <Clock className="h-4 w-4 text-orange-600" />
-          <AlertTitle className="text-orange-900">Pre-Enrollment Pending</AlertTitle>
-          <AlertDescription className="text-orange-700">
-            Your pre-enrollment is currently pending admin approval. Please wait for confirmation before adding subjects.
-          </AlertDescription>
-        </Alert>
-      )}
+  const handleChangePassword = async () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert('New passwords do not match');
+      return;
+    }
 
-      {/* Rejected Status Alert */}
-      {enrollmentStatus === 'rejected' && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertTitle className="text-red-900">Pre-Enrollment Rejected</AlertTitle>
-          <AlertDescription className="text-red-700">
-            Your pre-enrollment has been rejected. Please contact the admin office for more information.
-          </AlertDescription>
-        </Alert>
-      )}
+    if (passwordForm.newPassword.length < 6) {
+      alert('New password must be at least 6 characters long');
+      return;
+    }
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Column - Current Courses and Schedule */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Current Courses */}
-          <Card className="border-0 shadow-lg overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3">
-              <h3 className="text-white text-lg">Current Enrolled Courses</h3>
-            </div>
-            <ScrollArea className="h-[280px]">
-              <div className="p-4">
-                <div className="space-y-2">
-                  {currentCourses.map((course, index) => (
-                    <div key={index} className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs px-2 py-0">
-                              {course.code}
-                            </Badge>
-                            <span className="text-sm text-slate-900 truncate">{course.name}</span>
-                          </div>
-                          <p className="text-xs text-slate-500">Instructor: {course.instructor}</p>
+    try {
+      setLoading(true);
+      await studentService.changePassword(passwordForm.newPassword);
+      alert('Password changed successfully');
+      setPasswordForm({
+        newPassword: '',
+        confirmPassword: ''
+      });
+    } catch (error: any) {
+      alert(error.message || 'Failed to change password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderDashboardContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Status Alert */}
+        {enrollmentStatus === 'approved' && (
+          <Alert className="bg-green-50 border-green-200">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertTitle className="text-green-900">Enrollment Approved</AlertTitle>
+            <AlertDescription className="text-green-700">
+              You can now manage subjects and view your schedule.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'pending' && (
+          <Alert className="bg-orange-50 border-orange-200">
+            <Clock className="h-4 w-4 text-orange-600" />
+            <AlertTitle className="text-orange-900">Enrollment Pending</AlertTitle>
+            <AlertDescription className="text-orange-700">
+              Your enrollment is awaiting admin approval.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'rejected' && (
+          <Alert className="bg-red-50 border-red-200">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertTitle className="text-red-900">Enrollment Rejected</AlertTitle>
+            <AlertDescription className="text-red-700">
+              Please contact the admin office for more information.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Current Courses */}
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Current Enrolled Subjects</h3>
+            {currentCourses.length === 0 ? (
+              <p className="text-slate-500 text-center py-8">No enrolled subjects</p>
+            ) : (
+              <div className="space-y-3">
+                {currentCourses.map((course, index) => (
+                  <div key={index} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge className="bg-blue-100 text-blue-700 border-0">
+                            {course.code}
+                          </Badge>
+                          <span className="text-slate-900 font-medium">{course.name}</span>
                         </div>
-                        <Badge variant="outline" className="text-slate-600 text-xs ml-2 shrink-0">
-                          {course.units} Units
-                        </Badge>
+                        <p className="text-sm text-slate-500">Instructor: {course.instructor}</p>
+                        {course.schedule && (
+                          <p className="text-sm text-slate-500">Schedule: {course.schedule}</p>
+                        )}
+                        {course.room && (
+                          <p className="text-sm text-slate-500">Room: {course.room}</p>
+                        )}
                       </div>
+                      <Badge variant="outline">{course.units} Units</Badge>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            </ScrollArea>
-          </Card>
-
-          {/* Schedule */}
-          <Card className="border-0 shadow-lg overflow-hidden">
-            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
-              <h3 className="text-white text-lg">This Week's Schedule</h3>
-            </div>
-            <ScrollArea className="h-[240px]">
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-2">
-                  {schedule.map((item, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      <div className="w-12 shrink-0">
-                        <p className="text-xs text-slate-900">{item.day}</p>
-                        <p className="text-xs text-slate-500">{item.time}</p>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-900">{item.subject}</p>
-                        <p className="text-xs text-slate-500">{item.room}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </ScrollArea>
-          </Card>
-        </div>
-
-        {/* Right Column */}
-        <div className="space-y-4">
-          {/* Calendar */}
-          <Card className="border-0 shadow-lg overflow-hidden">
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3">
-              <h3 className="text-white text-lg">Academic Calendar</h3>
-            </div>
-            <div className="p-3">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={setDate}
-                className="rounded-md scale-90 -my-2"
-              />
-            </div>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card className="border-0 shadow-lg p-4">
-            <h4 className="mb-3 text-slate-900">Quick Actions</h4>
-            <div className="space-y-2">
-              <Button 
-                onClick={() => setActiveSection('Enroll')}
-                className="w-full justify-start gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 h-9 text-sm"
-                disabled={enrollmentStatus === 'pending'}
-              >
-                <ClipboardCheck className="h-4 w-4" />
-                New Enrollment
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start gap-2 h-9 text-sm"
-                disabled={enrollmentStatus !== 'approved'}
-              >
-                <BookOpen className="h-4 w-4" />
-                View Grades
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2 h-9 text-sm">
-                <CalendarIcon className="h-4 w-4" />
-                Class Schedule
-              </Button>
-            </div>
-          </Card>
-        </div>
+            )}
+          </div>
+        </Card>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderEnrollmentContent = () => (
     <div>
@@ -682,325 +689,400 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     </div>
   );
 
-  const renderSubjectsContent = () => (
-    <div>
-      {enrollmentStatus !== 'approved' && (
-        <Alert className="mb-4 bg-orange-50 border-orange-200">
-          <AlertCircle className="h-4 w-4 text-orange-600" />
-          <AlertTitle className="text-orange-900">Pre-Enrollment Required</AlertTitle>
-          <AlertDescription className="text-orange-700">
-            You must complete and get approval for pre-enrollment before you can add subjects and proceed to payment.
-          </AlertDescription>
-        </Alert>
-      )}
+  const renderSubjectsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
 
-      <Card className="border-0 shadow-lg p-6">
-        <p className="text-slate-600 mb-6">Browse and enroll in available subjects.</p>
-        
-        {selectedSubjects.length > 0 && enrollmentStatus === 'approved' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <p className="text-sm mb-2">
-              <span className="font-medium">{selectedSubjects.length}</span> subject(s) selected
-            </p>
-            <div className="bg-slate-100 rounded-lg p-3 mb-3">
-              <p className="text-xs text-slate-600 mb-2">Tuition Computation:</p>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Tuition Fee ({selectedSubjects.length * 3} units):</span>
-                  <span>₱{(selectedSubjects.length * 3 * 1500).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Laboratory Fee:</span>
-                  <span>₱2,500</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Miscellaneous:</span>
-                  <span>₱3,000</span>
-                </div>
-                <div className="flex justify-between border-t pt-2 mt-2">
-                  <span className="font-medium">Total:</span>
-                  <span className="font-medium">₱{((selectedSubjects.length * 3 * 1500) + 2500 + 3000).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-            <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600">
-              Proceed to Payment
-            </Button>
-          </div>
+    // Get enrolled subject IDs from current courses
+    const enrolledSubjectIds = currentCourses.map((c: any) => c.subject_id).filter((id: any) => id);
+
+    return (
+      <div>
+        {enrollmentStatus !== 'approved' && (
+          <Alert className="mb-4 bg-orange-50 border-orange-200">
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+            <AlertTitle className="text-orange-900">Enrollment Required</AlertTitle>
+            <AlertDescription className="text-orange-700">
+              You must complete and get approval for enrollment before you can manage subjects.
+            </AlertDescription>
+          </Alert>
         )}
 
-        <div className="space-y-3">
-          {availableSubjects.map((subject, index) => (
-            <div 
-              key={index} 
-              className={`border rounded-lg p-4 transition-colors ${
-                enrollmentStatus === 'approved' ? 'hover:bg-slate-50' : 'opacity-60'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Checkbox 
-                      id={`subject-${index}`}
-                      checked={selectedSubjects.includes(subject.code)}
-                      onCheckedChange={() => toggleSubject(subject.code)}
-                      disabled={enrollmentStatus !== 'approved'}
-                    />
-                    <label 
-                      htmlFor={`subject-${index}`} 
-                      className={enrollmentStatus === 'approved' ? 'cursor-pointer' : 'cursor-not-allowed'}
-                    >
-                      <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                        {subject.code}
-                      </Badge>
-                      <span className="ml-2 text-slate-900">{subject.name}</span>
-                    </label>
+        <Card className="border-0 shadow-lg p-6">
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-2">Available Subjects</h3>
+            <p className="text-slate-600">Browse and enroll in available subjects for your course.</p>
+          </div>
+
+          {availableSubjects.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">No subjects available</p>
+          ) : (
+            <div className="space-y-3">
+              {availableSubjects.map((subject, index) => {
+                const isEnrolledSubject = enrolledSubjectIds.includes(subject.subjectId);
+                return (
+                  <div 
+                    key={index} 
+                    className={`border rounded-lg p-4 transition-colors ${
+                      enrollmentStatus === 'approved' ? 'hover:bg-slate-50' : 'opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge className="bg-blue-100 text-blue-700 border-0">
+                            {subject.code}
+                          </Badge>
+                          <span className="text-slate-900 font-medium">{subject.name}</span>
+                          {isEnrolledSubject && (
+                            <Badge className="bg-green-100 text-green-700 border-0">Enrolled</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-500">Units: {subject.units}</p>
+                        {subject.course && (
+                          <p className="text-sm text-slate-500">Course: {subject.course}</p>
+                        )}
+                      </div>
+                      {enrollmentStatus === 'approved' && currentEnrollment && (
+                        <div className="flex gap-2">
+                          {!isEnrolledSubject ? (
+                            <Button 
+                              size="sm"
+                              className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                              onClick={() => handleAddSubject(subject.subjectId)}
+                            >
+                              Add Subject
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => handleRemoveSubject(subject.subjectId)}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-slate-500 ml-6">Instructor: {subject.instructor}</p>
-                  <p className="text-sm text-slate-500 ml-6">Schedule: {subject.schedule}</p>
-                </div>
-                <Badge variant="outline" className="text-slate-600">
-                  {subject.units} Units
-                </Badge>
-              </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-
-  const renderScheduleContent = () => (
-    <div>
-      <Card className="border-0 shadow-lg p-6">
-        <p className="text-slate-600 mb-6">Your complete class schedule for the semester.</p>
-        <div className="space-y-4">
-          {schedule.map((item, index) => (
-            <div key={index} className="p-4 border rounded-lg hover:bg-slate-50">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h4 className="text-slate-900">{item.subject}</h4>
-                  <p className="text-sm text-slate-500">{item.day} • {item.time}</p>
-                </div>
-                <Badge variant="outline">{item.room}</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-
-  const renderProfileContent = () => (
-    <div>
-      <div className="grid grid-cols-12 gap-6">
-        {/* Left Sidebar - Profile Summary */}
-        <div className="col-span-3">
-          <Card className="border-0 shadow-lg p-6 text-center">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center mx-auto mb-4">
-              <User className="h-12 w-12 text-white" />
-            </div>
-            <h3 className="mb-1">Juan Dela Cruz</h3>
-            <p className="text-sm text-slate-500 mb-4">juan.delacruz@email.com</p>
-            
-            <div className="space-y-3 text-left">
-              <div>
-                <p className="text-xs text-slate-500">Course</p>
-                <p className="text-sm">BSIT</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Section</p>
-                <p className="text-sm">IT-2A</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Semester</p>
-                <p className="text-sm">1st Semester 2024-2025</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Right Content - Tabbed Information */}
-        <div className="col-span-9">
-          <Card className="border-0 shadow-lg">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="border-b px-6 pt-4">
-                <TabsList className="bg-transparent">
-                  <TabsTrigger value="basic-info">BASIC INFO</TabsTrigger>
-                  <TabsTrigger value="credentials">CREDENTIALS</TabsTrigger>
-                  <TabsTrigger value="address">ADDRESS</TabsTrigger>
-                  <TabsTrigger value="guardian">GUARDIAN</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="basic-info" className="p-6">
-                <div className="space-y-4">
-                  <h4 className="mb-4">Personal Details</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>First Name</Label>
-                      <Input placeholder="Juan" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Last Name</Label>
-                      <Input placeholder="Dela Cruz" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Middle Name</Label>
-                      <Input placeholder="Santos" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Date of Birth</Label>
-                      <Input type="date" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Gender</Label>
-                      <Select>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Select gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Contact Number</Label>
-                      <Input placeholder="09XX XXX XXXX" className="mt-1" />
-                    </div>
-                  </div>
-
-                  <div className="border-t pt-4 mt-6">
-                    <h4 className="mb-4">Other Details</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Nationality</Label>
-                        <Input placeholder="Filipino" className="mt-1" />
-                      </div>
-                      <div>
-                        <Label>Civil Status</Label>
-                        <Select>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="single">Single</SelectItem>
-                            <SelectItem value="married">Married</SelectItem>
-                            <SelectItem value="widowed">Widowed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-600">
-                    Save Changes
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="credentials" className="p-6">
-                <div className="space-y-4">
-                  <h4 className="mb-4">Account Credentials</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Email Address</Label>
-                      <Input type="email" placeholder="juan.delacruz@email.com" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Username</Label>
-                      <Input placeholder="juandelacruz" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Current Password</Label>
-                      <Input type="password" placeholder="Enter current password" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>New Password</Label>
-                      <Input type="password" placeholder="Enter new password" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Confirm Password</Label>
-                      <Input type="password" placeholder="Confirm new password" className="mt-1" />
-                    </div>
-                  </div>
-                  <Button className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-600">
-                    Update Credentials
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="address" className="p-6">
-                <div className="space-y-4">
-                  <h4 className="mb-4">Address Information</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Street Address</Label>
-                      <Input placeholder="123 Rizal Street" className="mt-1" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>City</Label>
-                        <Input placeholder="Manila" className="mt-1" />
-                      </div>
-                      <div>
-                        <Label>Province</Label>
-                        <Input placeholder="Metro Manila" className="mt-1" />
-                      </div>
-                      <div>
-                        <Label>Postal Code</Label>
-                        <Input placeholder="1000" className="mt-1" />
-                      </div>
-                      <div>
-                        <Label>Country</Label>
-                        <Input placeholder="Philippines" className="mt-1" />
-                      </div>
-                    </div>
-                  </div>
-                  <Button className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-600">
-                    Save Address
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="guardian" className="p-6">
-                <div className="space-y-4">
-                  <h4 className="mb-4">Guardian/Emergency Contact</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Guardian Name</Label>
-                      <Input placeholder="Maria Dela Cruz" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Relationship</Label>
-                      <Input placeholder="Mother" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Contact Number</Label>
-                      <Input placeholder="09XX XXX XXXX" className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Email Address</Label>
-                      <Input type="email" placeholder="maria.delacruz@email.com" className="mt-1" />
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Address</Label>
-                      <Input placeholder="123 Rizal Street, Manila" className="mt-1" />
-                    </div>
-                  </div>
-                  <Button className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-600">
-                    Save Guardian Info
-                  </Button>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </Card>
-        </div>
+          )}
+        </Card>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderScheduleContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    // Group schedule by day for better display
+    const scheduleByDay: Record<string, any[]> = {};
+    currentCourses.forEach((course: any) => {
+      if (course.schedule) {
+        const parts = course.schedule.split(' ');
+        const day = parts[0] || 'TBA';
+        const time = parts.slice(1).join(' ') || 'TBA';
+        if (!scheduleByDay[day]) {
+          scheduleByDay[day] = [];
+        }
+        scheduleByDay[day].push({
+          code: course.code,
+          name: course.name,
+          time,
+          room: course.room || 'TBA',
+          instructor: course.instructor || 'TBA'
+        });
+      }
+    });
+
+    const daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const sortedDays = Object.keys(scheduleByDay).sort((a, b) => {
+      const aIndex = daysOrder.indexOf(a);
+      const bIndex = daysOrder.indexOf(b);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+
+    return (
+      <div>
+        <Card className="border-0 shadow-lg p-6">
+          <h3 className="text-lg font-semibold mb-4">My Class Schedule</h3>
+          
+          {currentEnrollment && (
+            <div className="mb-6 text-sm text-slate-600">
+              <p>School Year: {currentEnrollment.school_year || 'N/A'}</p>
+              <p>Semester: {currentEnrollment.semester || 'N/A'}</p>
+            </div>
+          )}
+
+          {sortedDays.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">No schedule available</p>
+          ) : (
+            <div className="space-y-4">
+              {sortedDays.map((day) => (
+                <div key={day} className="border rounded-lg p-4">
+                  <h4 className="font-semibold text-slate-900 mb-3">{day}</h4>
+                  <div className="space-y-2">
+                    {scheduleByDay[day].map((item, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge className="bg-blue-100 text-blue-700 border-0">{item.code}</Badge>
+                            <span className="text-slate-900">{item.name}</span>
+                          </div>
+                          <p className="text-sm text-slate-500">
+                            {item.time} • Room: {item.room} • Instructor: {item.instructor}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  };
+
+  const renderProfileContent = () => {
+    if (loading || !studentProfile) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Card className="border-0 shadow-lg p-6">
+          <h3 className="text-lg font-semibold mb-6">My Profile</h3>
+          
+          <div className="space-y-6">
+            {/* Basic Information */}
+            <div>
+              <h4 className="text-md font-medium mb-4">Personal Information</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="profile-first-name">First Name</Label>
+                  <Input 
+                    id="profile-first-name"
+                    value={profileForm.first_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="profile-last-name">Last Name</Label>
+                  <Input 
+                    id="profile-last-name"
+                    value={profileForm.last_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="profile-middle-name">Middle Name</Label>
+                  <Input 
+                    id="profile-middle-name"
+                    value={profileForm.middle_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, middle_name: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="profile-birth-date">Birth Date</Label>
+                  <Input 
+                    id="profile-birth-date"
+                    type="date"
+                    value={profileForm.birth_date ? profileForm.birth_date.split('T')[0] : ''}
+                    onChange={(e) => setProfileForm({ ...profileForm, birth_date: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="profile-gender">Gender</Label>
+                  <Select
+                    value={profileForm.gender}
+                    onValueChange={(value) => setProfileForm({ ...profileForm, gender: value })}
+                  >
+                    <SelectTrigger id="profile-gender" className="mt-2">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="profile-contact">Contact Number</Label>
+                  <Input 
+                    id="profile-contact"
+                    value={profileForm.contact_number}
+                    onChange={(e) => setProfileForm({ ...profileForm, contact_number: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Information */}
+            <div className="border-t pt-6">
+              <h4 className="text-md font-medium mb-4">Contact Information</h4>
+              <div>
+                <Label htmlFor="profile-address">Address</Label>
+                <Input 
+                  id="profile-address"
+                  value={profileForm.address}
+                  onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+
+            {/* Account Credentials */}
+            <div className="border-t pt-6">
+              <h4 className="text-md font-medium mb-4">Account Credentials</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="profile-username">Username</Label>
+                  <Input 
+                    id="profile-username"
+                    value={profileForm.username}
+                    onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                    className="mt-2"
+                    placeholder="Enter username"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Password Change */}
+            <div className="border-t pt-6">
+              <h4 className="text-md font-medium mb-4">Change Password</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input 
+                    id="new-password"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    className="mt-2"
+                    placeholder="Enter new password"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="confirm-password">Confirm New Password</Label>
+                  <Input 
+                    id="confirm-password"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    className="mt-2"
+                    placeholder="Confirm new password"
+                  />
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleChangePassword}
+                disabled={loading || !passwordForm.newPassword || !passwordForm.confirmPassword}
+                className="mt-4"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Changing...
+                  </>
+                ) : (
+                  'Change Password'
+                )}
+              </Button>
+            </div>
+
+            {/* Student Information (Read-only) */}
+            <div className="border-t pt-6">
+              <h4 className="text-md font-medium mb-4">Student Information</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-slate-500">Student ID</p>
+                  <p className="font-medium">{studentProfile.student_id || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Course</p>
+                  <p className="font-medium">{studentProfile.course || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Year Level</p>
+                  <p className="font-medium">{studentProfile.year_level ? `${studentProfile.year_level}${studentProfile.year_level === 1 ? 'st' : studentProfile.year_level === 2 ? 'nd' : studentProfile.year_level === 3 ? 'rd' : 'th'} Year` : 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Student Type</p>
+                  <p className="font-medium">{studentProfile.student_type || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end border-t pt-6">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setProfileForm({
+                    first_name: studentProfile.first_name || '',
+                    middle_name: studentProfile.middle_name || '',
+                    last_name: studentProfile.last_name || '',
+                    suffix: studentProfile.suffix || '',
+                    contact_number: studentProfile.contact_number || '',
+                    address: studentProfile.address || '',
+                    birth_date: studentProfile.birth_date || '',
+                    gender: studentProfile.gender || '',
+                    username: studentProfile.username || ''
+                  });
+                }}
+              >
+                Reset
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={handleUpdateProfile}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Profile Changes'
+                )}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">

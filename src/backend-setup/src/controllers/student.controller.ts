@@ -6,12 +6,16 @@ export const getStudentProfile = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
-    const students = await query(
-      'SELECT * FROM students WHERE user_id = ?',
+    // Get student and user info
+    const results = await query(
+      `SELECT s.*, u.username, u.email 
+       FROM students s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.user_id = ?`,
       [userId]
     );
 
-    if (students.length === 0) {
+    if (results.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Student profile not found'
@@ -20,7 +24,7 @@ export const getStudentProfile = async (req: AuthRequest, res: Response) => {
 
     res.json({
       success: true,
-      data: students[0]
+      student: results[0]
     });
   } catch (error) {
     console.error('Get student profile error:', error);
@@ -42,9 +46,11 @@ export const updateStudentProfile = async (req: AuthRequest, res: Response) => {
       contact_number,
       address,
       birth_date,
-      gender
+      gender,
+      username
     } = req.body;
 
+    // Update student info
     await run(
       `UPDATE students SET 
         first_name = ?,
@@ -59,6 +65,27 @@ export const updateStudentProfile = async (req: AuthRequest, res: Response) => {
       WHERE user_id = ?`,
       [first_name, middle_name, last_name, suffix, contact_number, address, birth_date, gender, userId]
     );
+
+    // Update username if provided
+    if (username) {
+      // Check if username is already taken by another user
+      const existingUsers = await query(
+        'SELECT id FROM users WHERE username = ? AND id != ?',
+        [username, userId]
+      );
+
+      if (existingUsers.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username is already taken'
+        });
+      }
+
+      await run(
+        'UPDATE users SET username = ? WHERE id = ?',
+        [username, userId]
+      );
+    }
 
     res.json({
       success: true,

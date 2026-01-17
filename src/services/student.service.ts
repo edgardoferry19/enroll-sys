@@ -25,9 +25,24 @@ class StudentService {
     address?: string;
     birth_date?: string;
     gender?: string;
+    username?: string;
   }): Promise<any> {
     try {
       const response = await api.put('/students/profile', profileData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Change password
+   */
+  async changePassword(newPassword: string): Promise<any> {
+    try {
+      const response = await api.put('/auth/change-password', {
+        newPassword
+      });
       return response.data;
     } catch (error) {
       throw new Error(handleApiError(error));

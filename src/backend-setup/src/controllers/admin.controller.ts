@@ -123,8 +123,8 @@ export const createStudent = async (req: AuthRequest, res: Response) => {
       gender
     } = req.body;
 
-    // Create user account
-    const hashedPassword = await bcrypt.hash(password || 'student123', 10);
+    // Create user account - default password is 'password'
+    const hashedPassword = await bcrypt.hash(password || 'password', 10);
     
     const userResult = await run(
       'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
