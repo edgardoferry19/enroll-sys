@@ -61,14 +61,14 @@ async function setupDatabase() {
     db.exec('CREATE INDEX IF NOT EXISTS idx_status ON students(status)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_cor_status ON students(cor_status)');
 
-    // Create enrollments table
+    // Create enrollments table (includes assessment fee columns)
     db.exec(`
       CREATE TABLE IF NOT EXISTS enrollments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         student_id INTEGER NOT NULL,
         school_year TEXT NOT NULL,
         semester TEXT NOT NULL CHECK(semester IN ('1st', '2nd', 'Summer')),
-        status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'For Assessment', 'Assessed', 'For Approval', 'Approved', 'Enrolled', 'Rejected')),
+        status TEXT DEFAULT 'Pending Assessment' CHECK(status IN ('Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled', 'Rejected')),
         enrollment_date TEXT DEFAULT (datetime('now')),
         assessed_by INTEGER,
         assessed_at TEXT,
@@ -76,6 +76,13 @@ async function setupDatabase() {
         approved_at TEXT,
         total_units INTEGER DEFAULT 0,
         total_amount REAL DEFAULT 0.00,
+        -- Assessment breakdown fields
+        tuition REAL DEFAULT 0.00,
+        registration REAL DEFAULT 0.00,
+        library REAL DEFAULT 0.00,
+        lab REAL DEFAULT 0.00,
+        id_fee REAL DEFAULT 0.00,
+        others REAL DEFAULT 0.00,
         remarks TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
@@ -89,6 +96,26 @@ async function setupDatabase() {
     // Create indexes
     db.exec('CREATE INDEX IF NOT EXISTS idx_student_enrollment ON enrollments(student_id, school_year, semester)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_enrollment_status ON enrollments(status)');
+
+    // Backfill / add missing assessment columns for existing databases
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN tuition REAL DEFAULT 0.00");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN registration REAL DEFAULT 0.00");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN library REAL DEFAULT 0.00");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN lab REAL DEFAULT 0.00");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN id_fee REAL DEFAULT 0.00");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN others REAL DEFAULT 0.00");
+    } catch (e) {}
 
     // Create subjects table
     db.exec(`

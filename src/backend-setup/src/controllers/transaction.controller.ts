@@ -143,8 +143,8 @@ export const updateTransactionStatus = async (req: AuthRequest, res: Response) =
     const userId = req.user?.id;
 
     await run(
-      'UPDATE transactions SET status = ?, remarks = ?, updated_at = datetime("now") WHERE id = ?',
-      [status, remarks, id]
+      "UPDATE transactions SET status = ?, remarks = ?, updated_at = datetime('now') WHERE id = ?",
+      [status, remarks || null, id]
     );
 
     // Log activity

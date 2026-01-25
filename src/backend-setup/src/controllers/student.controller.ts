@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { query, run } from '../database/connection';
 import { AuthRequest } from '../middleware/auth.middleware';
+import fs from 'fs';
 
 export const getStudentProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -158,6 +159,25 @@ export const uploadDocument = async (req: AuthRequest, res: Response) => {
         message: 'No file uploaded'
       });
     }
+
+      // Log file details for debugging
+      console.log('Upload received:', {
+        originalname: file.originalname,
+        fieldname: file.fieldname,
+        path: file.path,
+        size: file.size
+      });
+
+      // Check file exists on disk (multer should have written it)
+      try {
+        const exists = fs.existsSync(file.path);
+        console.log('File exists on disk?', exists, file.path);
+        if (!exists) {
+          return res.status(500).json({ success: false, message: 'Uploaded file not found on server' });
+        }
+      } catch (err) {
+        console.error('Error checking uploaded file:', err);
+      }
 
     // Get student ID
     const students = await query(

@@ -242,7 +242,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         let pendingCount = 0;
         if (statsData.enrollmentStats && Array.isArray(statsData.enrollmentStats)) {
           const approved = statsData.enrollmentStats.find((s: any) => s.status === 'Approved');
-          const pending = statsData.enrollmentStats.find((s: any) => s.status === 'Pending');
+          const pending = statsData.enrollmentStats.find((s: any) => s.status === 'Pending' || s.status === 'Pending Assessment' || s.status === 'For Admin Approval');
           enrolledCount = approved?.count || 0;
           pendingCount = pending?.count || 0;
         }
@@ -281,8 +281,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         // Fetch recent enrollments (approved)
         const enrollmentsData = await adminService.getAllEnrollments({ status: 'Approved' });
         const recent = enrollmentsData.data?.slice(0, 10).map((e: any) => ({
-          name: `${e.student?.first_name || ''} ${e.student?.last_name || ''}`.trim(),
-          course: e.student?.course || 'N/A',
+          name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+          course: e.course || 'N/A',
           status: e.status,
           time: formatTimeAgo(e.created_at)
         })) || [];
@@ -291,16 +291,16 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
       // Fetch pending enrollments
       if (activeSection === 'Dashboard' || activeSection === 'Enrollment Request') {
-        const pendingData = await adminService.getAllEnrollments({ status: 'Pending' });
+        const pendingData = await adminService.getAllEnrollments({ status: 'For Admin Approval' });
         const pending = pendingData.data?.map((e: any) => ({
           id: `#E-${e.id}`,
           enrollmentId: e.id,
-          student: `${e.student?.first_name || ''} ${e.student?.last_name || ''}`.trim(),
-          course: e.student?.course || 'N/A',
+          student: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+          course: e.course || 'N/A',
           date: formatDate(e.created_at),
           priority: 'medium',
-          type: e.student?.student_type || 'New Student',
-          hasDocuments: (e.documents?.length || 0) > 0,
+          type: e.student_type || 'New Student',
+          hasDocuments: (e.documents_count || 0) > 0,
           status: e.status,
           ...e
         })) || [];
@@ -447,10 +447,19 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
   // Placeholder data removed - now using state from backend
 
-  const handlePreviewStudent = (pending: any) => {
-    setSelectedItem(pending);
-    setPreviewType('student');
-    setPreviewOpen(true);
+  const handlePreviewStudent = async (pending: any) => {
+    try {
+      setLoading(true);
+      const resp = await adminService.getEnrollmentById(pending.enrollmentId || pending.id || pending.enrollmentId);
+      const data = resp.data || resp;
+      setSelectedItem(data);
+      setPreviewType('student');
+      setPreviewOpen(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load enrollment details');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePreviewTransaction = (transaction: any) => {
@@ -1963,49 +1972,37 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-slate-500">Student Name</p>
-                  <p className="font-medium">{selectedItem.student}</p>
+                  <p className="font-medium">{selectedItem.enrollment?.first_name || selectedItem.enrollment?.first_name || `${selectedItem.enrollment?.first_name || ''} ${selectedItem.enrollment?.last_name || ''}`.trim() || `${selectedItem.enrollment?.first_name || ''} ${selectedItem.enrollment?.last_name || ''}`.trim()}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Student ID</p>
-                  <p className="font-medium">{selectedItem.id}</p>
+                  <p className="font-medium">{selectedItem.enrollment?.student_id || selectedItem.enrollment?.id || selectedItem.enrollment?.student_id}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Course</p>
-                  <p className="font-medium">{selectedItem.course}</p>
+                  <p className="font-medium">{selectedItem.enrollment?.course || selectedItem.enrollment?.course}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Student Type</p>
-                  <p className="font-medium">{selectedItem.type}</p>
+                  <p className="font-medium">{selectedItem.enrollment?.student_type || selectedItem.enrollment?.student_type}</p>
                 </div>
               </div>
 
               <div className="border-t pt-4">
                 <h4 className="mb-3">Uploaded Documents</h4>
                 <div className="space-y-2">
-                  {selectedItem.hasDocuments ? (
-                    <>
-                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  {selectedItem.documents && selectedItem.documents.length > 0 ? (
+                    selectedItem.documents.map((doc: any) => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm">Form 137</span>
+                          <span className="text-sm">{doc.document_type || doc.file_name}</span>
                         </div>
-                        <Button size="sm" variant="outline">View</Button>
+                        <a href={doc.file_path} target="_blank" rel="noreferrer">
+                          <Button size="sm" variant="outline">View</Button>
+                        </a>
                       </div>
-                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm">Form 138</span>
-                        </div>
-                        <Button size="sm" variant="outline">View</Button>
-                      </div>
-                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm">Birth Certificate</span>
-                        </div>
-                        <Button size="sm" variant="outline">View</Button>
-                      </div>
-                    </>
+                    ))
                   ) : (
                     <p className="text-sm text-slate-500 italic">No documents uploaded yet</p>
                   )}

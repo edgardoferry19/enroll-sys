@@ -74,6 +74,8 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
   const [addSubjectToCurriculumOpen, setAddSubjectToCurriculumOpen] = useState(false);
   const [selectedFaculty, setSelectedFaculty] = useState<any>(null);
   const [selectedProgram, setSelectedProgram] = useState<any>(null);
+  const [forDeanEnrollments, setForDeanEnrollments] = useState<any[]>([]);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   const [newFacultyForm, setNewFacultyForm] = useState({
     faculty_id: '',
@@ -265,6 +267,31 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to remove subject from curriculum');
+    }
+  };
+
+  const fetchForDeanEnrollments = async () => {
+    try {
+      setError('');
+      const response = await deanService.getEnrollments({ status: 'For Dean Approval' });
+      if (response.success) {
+        setForDeanEnrollments(response.data || []);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load enrollments for dean');
+    }
+  };
+
+  const handleApproveSubjects = async (enrollmentId: number) => {
+    try {
+      setApprovingId(enrollmentId);
+      await deanService.approveSubjectSelection(enrollmentId);
+      setApprovingId(null);
+      await fetchForDeanEnrollments();
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to approve subjects');
+      setApprovingId(null);
     }
   };
 
@@ -856,6 +883,62 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
     );
   };
 
+  const renderDeanApprovalsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Enrollments - For Dean Approval</h3>
+          <div>
+            <Button variant="outline" onClick={fetchForDeanEnrollments}>Refresh</Button>
+          </div>
+        </div>
+
+        <Card className="border-0 shadow-lg">
+          <ScrollArea className="h-[500px]">
+            <div className="p-4">
+              {forDeanEnrollments.length === 0 ? (
+                <p className="text-center text-slate-500 py-8">No enrollments pending dean approval</p>
+              ) : (
+                <div className="space-y-3">
+                  {forDeanEnrollments.map((enr) => (
+                    <div key={enr.id} className="p-3 bg-slate-50 rounded-lg flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{enr.first_name} {enr.last_name} — {enr.course || enr.program_name}</p>
+                        <p className="text-xs text-slate-500">Submitted: {new Date(enr.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleApproveSubjects(enr.id)} disabled={approvingId === enr.id}>
+                          {approvingId === enr.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </Card>
+      </div>
+    );
+  };
+
   const renderCurriculumContent = () => {
     if (loading) {
       return (
@@ -1026,6 +1109,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
     { name: 'Faculty Management', icon: Users },
     { name: 'Program Management', icon: BookOpen },
     { name: 'Curriculum', icon: FileText },
+    { name: 'For Dean Approval', icon: Award },
   ];
 
   return (
@@ -1096,6 +1180,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
             {activeSection === 'Faculty Management' && renderFacultyManagementContent()}
             {activeSection === 'Program Management' && renderProgramManagementContent()}
             {activeSection === 'Curriculum' && renderCurriculumContent()}
+            {activeSection === 'For Dean Approval' && renderDeanApprovalsContent()}
           </div>
         </div>
       </div>

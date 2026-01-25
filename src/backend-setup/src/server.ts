@@ -2,6 +2,7 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -29,7 +30,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Static files for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '../uploads');
+const documentsDir = path.join(uploadsDir, 'documents');
+try {
+  fs.mkdirSync(documentsDir, { recursive: true });
+} catch (e) {
+  console.error('Failed to create uploads directory', e);
+}
+
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);

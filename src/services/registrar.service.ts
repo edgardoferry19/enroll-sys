@@ -76,6 +76,47 @@ class RegistrarService {
       throw new Error(handleApiError(error));
     }
   }
+
+  /**
+   * Assess enrollment and set fees
+   */
+  async assessEnrollment(
+    enrollmentId: number,
+    assessmentData: {
+      tuition: number;
+      registration: number;
+      library: number;
+      lab: number;
+      id_fee: number;
+      others: number;
+      remarks?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response = await api.put(`/registrar/enrollments/${enrollmentId}/assess`, assessmentData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Verify payment
+   */
+  async verifyPayment(
+    enrollmentId: number,
+    verificationData: {
+      transaction_id: number;
+      remarks?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response = await api.put(`/registrar/enrollments/${enrollmentId}/verify-payment`, verificationData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const registrarService = new RegistrarService();

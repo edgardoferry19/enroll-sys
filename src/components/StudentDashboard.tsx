@@ -28,6 +28,13 @@ import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { DocumentUpload } from './ui/document-upload';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -47,7 +54,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [enrollmentStep, setEnrollmentStep] = useState(1);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('basic-info');
-  const [enrollmentStatus, setEnrollmentStatus] = useState<'none' | 'pending' | 'approved' | 'rejected'>('none');
+  const [enrollmentStatus, setEnrollmentStatus] = useState<string>('none');
   const [hasNewNotification, setHasNewNotification] = useState(true);
   const [showNotification, setShowNotification] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,6 +65,8 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [studentProfile, setStudentProfile] = useState<any>(null);
   const [enrollmentDetails, setEnrollmentDetails] = useState<any>(null);
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
+  const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File>>({});
   const [schoolYear, setSchoolYear] = useState('2024-2025');
   const [semester, setSemester] = useState('1st Semester');
@@ -106,51 +115,55 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
         });
       }
       
-      // Fetch enrollments
+      // Fetch enrollments (backend returns { success, data: [...] })
       const enrollmentsData = await enrollmentService.getMyEnrollments();
-      const enrollmentsList = enrollmentsData.enrollments || [];
+      const enrollmentsList = enrollmentsData?.data || [];
       setEnrollments(enrollmentsList);
-      
-      // Find current enrollment
-      const current = enrollmentsList.find((e: any) => 
-        e.status === 'Approved' || e.status === 'Pending'
-      );
+
+      // Find current enrollment (most recent non-rejected)
+      const current = enrollmentsList.find((e: any) =>
+        e.status !== 'Rejected' && e.status !== 'Enrolled'
+      ) || enrollmentsList.find((e: any) => e.status === 'Enrolled');
       setCurrentEnrollment(current);
       
       if (current) {
-        setEnrollmentStatus(
-          current.status === 'Approved' ? 'approved' :
-          current.status === 'Pending' ? 'pending' :
-          current.status === 'Rejected' ? 'rejected' : 'none'
-        );
+        // Map backend statuses to frontend status
+        setEnrollmentStatus(current.status || 'none');
         
-        // Fetch enrollment details with subjects
-        const details = await enrollmentService.getEnrollmentDetails(current.id);
-        setEnrollmentDetails(details.enrollment || details);
-        const subjects = (details.enrollment?.enrollment_subjects || details.enrollment_subjects || []);
+        // Fetch enrollment details with subjects (backend returns { success, data: { enrollment, subjects } })
+        const detailsResp = await enrollmentService.getEnrollmentDetails(current.id);
+        const details = detailsResp?.data?.enrollment || detailsResp?.data || {};
+        setEnrollmentDetails(details);
+        const subjects = detailsResp?.data?.subjects || details.enrollment_subjects || [];
         setCurrentCourses(subjects.map((es: any) => ({
-          code: es.subject?.subject_code || '',
-          name: es.subject?.subject_name || '',
+          code: es.subject_code || es.subject?.subject_code || '',
+          name: es.subject_name || es.subject?.subject_name || '',
           instructor: es.instructor || 'TBA',
-          units: es.subject?.units || 0,
+          units: es.units || es.subject?.units || 0,
           schedule: es.schedule || '',
           room: es.room || '',
           subject_id: es.subject_id || es.subject?.id
         })));
-        
+
         // Build schedule from subjects
         const scheduleList = subjects.map((es: any) => ({
           day: es.schedule?.split(' ')[0] || 'TBA',
           time: es.schedule?.split(' ').slice(1).join(' ') || 'TBA',
-          subject: es.subject?.subject_code || '',
+          subject: es.subject_code || es.subject?.subject_code || '',
           room: es.room || 'TBA'
         }));
         setSchedule(scheduleList);
       }
       
-      // Fetch available subjects
-      const subjectsData = await subjectService.getAllSubjects();
-      const subjectsList = subjectsData.subjects || [];
+      // Fetch available subjects for the student's course when possible
+      let subjectsResp;
+      if (student && student.course) {
+        subjectsResp = await subjectService.getSubjectsByCourse(student.course);
+      } else {
+        subjectsResp = await subjectService.getAllSubjects();
+      }
+
+      const subjectsList = subjectsResp?.data || [];
       setAvailableSubjects(subjectsList.map((s: any) => ({
         code: s.subject_code,
         name: s.subject_name,
@@ -189,7 +202,8 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   ];
 
   const toggleSubject = (code: string) => {
-    if (enrollmentStatus !== 'approved') return;
+    // Allow subject selection when status is "For Subject Selection"
+    if (enrollmentStatus !== 'For Subject Selection') return;
     
     setSelectedSubjects(prev => 
       prev.includes(code) 
@@ -198,24 +212,73 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     );
   };
 
+  const handleSubmitSubjects = async () => {
+    if (!currentEnrollment) return;
+    
+    try {
+      setLoading(true);
+      await enrollmentService.submitSubjects(currentEnrollment.id);
+      await fetchStudentData();
+      alert('Subjects submitted for Dean approval');
+    } catch (error: any) {
+      alert(error.message || 'Failed to submit subjects');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitPayment = async (paymentData: {
+    payment_method: string;
+    reference_number: string;
+    receipt_path?: string;
+    amount?: number;
+  }) => {
+    if (!currentEnrollment) return;
+    
+    try {
+      setLoading(true);
+      await enrollmentService.submitPayment(currentEnrollment.id, paymentData);
+      await fetchStudentData();
+      alert('Payment submitted for verification');
+    } catch (error: any) {
+      alert(error.message || 'Failed to submit payment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmitForAssessment = async () => {
     try {
       setLoading(true);
       
+      // Normalize semester to match backend CHECK constraint ('1st', '2nd', 'Summer')
+      const normalizedSemester = semester?.toString().includes('1st')
+        ? '1st'
+        : semester?.toString().includes('2nd')
+        ? '2nd'
+        : semester?.toString().toLowerCase().includes('summer')
+        ? 'Summer'
+        : semester;
+
       // Create enrollment
-      const enrollment = await enrollmentService.createEnrollment(schoolYear, semester);
-      
+      const enrollment = await enrollmentService.createEnrollment(schoolYear, normalizedSemester);
+      const enrollmentId = enrollment?.data?.id || enrollment?.enrollment?.id || enrollment?.id;
+
+      if (!enrollmentId) {
+        throw new Error('Failed to retrieve created enrollment id');
+      }
+
       // Upload documents if any
       for (const [docType, file] of Object.entries(uploadedDocuments)) {
         if (file instanceof File) {
-          await studentService.uploadDocument(file, docType, enrollment.enrollment.id);
+          await studentService.uploadDocument(file, docType, enrollmentId);
         }
       }
-      
+
       // Submit for assessment
-      await enrollmentService.submitForAssessment(enrollment.enrollment.id);
+      await enrollmentService.submitForAssessment(enrollmentId);
       
-      setEnrollmentStatus('pending');
+      setEnrollmentStatus('Pending Assessment');
       setEnrollmentStep(1);
       setStudentType('');
       setUploadedDocuments({});
@@ -225,6 +288,29 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       alert(error.message || 'Failed to submit enrollment');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openAssessmentModal = async (enrollmentId?: number) => {
+    try {
+      setLoadingAssessment(true);
+      const id = enrollmentId || currentEnrollment?.id;
+      if (!id) return;
+      const detailsResp = await enrollmentService.getEnrollmentDetails(id);
+      const details = detailsResp?.data?.enrollment || detailsResp?.data || {};
+      setEnrollmentDetails(details);
+      const subjects = detailsResp?.data?.subjects || details.enrollment_subjects || [];
+      setCurrentCourses(subjects.map((es: any) => ({
+        code: es.subject_code || es.subject?.subject_code || '',
+        name: es.subject_name || es.subject?.subject_name || '',
+        units: es.units || es.subject?.units || 0,
+      })));
+      setAssessmentOpen(true);
+    } catch (err: any) {
+      console.error('Failed to load assessment details:', err);
+      alert(err.message || 'Failed to load assessment details');
+    } finally {
+      setLoadingAssessment(false);
     }
   };
 
@@ -316,27 +402,77 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     return (
       <div className="space-y-6">
         {/* Status Alert */}
-        {enrollmentStatus === 'approved' && (
+        {enrollmentStatus === 'Enrolled' && (
           <Alert className="bg-green-50 border-green-200">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertTitle className="text-green-900">Enrollment Approved</AlertTitle>
+            <AlertTitle className="text-green-900">Enrollment Complete!</AlertTitle>
             <AlertDescription className="text-green-700">
-              You can now manage subjects and view your schedule.
+              You are now enrolled. You can view your schedule and download your enrollment form.
             </AlertDescription>
           </Alert>
         )}
 
-        {enrollmentStatus === 'pending' && (
+        {enrollmentStatus === 'Payment Verification' && (
+          <Alert className="bg-blue-50 border-blue-200">
+            <Clock className="h-4 w-4 text-blue-600" />
+            <AlertTitle className="text-blue-900">Payment Verification</AlertTitle>
+            <AlertDescription className="text-blue-700">
+              Your payment is being verified by the registrar. You will be notified once verified.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'For Payment' && (
+          <Alert className="bg-purple-50 border-purple-200">
+            <Clock className="h-4 w-4 text-purple-600" />
+            <AlertTitle className="text-purple-900">Proceed to Payment</AlertTitle>
+            <AlertDescription className="text-purple-700">
+              Your subjects have been approved. Please proceed to payment.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'For Dean Approval' && (
+          <Alert className="bg-yellow-50 border-yellow-200">
+            <Clock className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-900">Awaiting Dean Approval</AlertTitle>
+            <AlertDescription className="text-yellow-700">
+              Your subject selection has been submitted and is awaiting Dean approval.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'For Subject Selection' && (
+          <Alert className="bg-green-50 border-green-200">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertTitle className="text-green-900">Select Your Subjects</AlertTitle>
+            <AlertDescription className="text-green-700">
+              Your enrollment has been approved. Please select your subjects.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'For Admin Approval' && (
           <Alert className="bg-orange-50 border-orange-200">
             <Clock className="h-4 w-4 text-orange-600" />
-            <AlertTitle className="text-orange-900">Enrollment Pending</AlertTitle>
+            <AlertTitle className="text-orange-900">Awaiting Admin Approval</AlertTitle>
             <AlertDescription className="text-orange-700">
-              Your enrollment is awaiting admin approval.
+              Your enrollment has been assessed. Waiting for admin approval.
             </AlertDescription>
           </Alert>
         )}
 
-        {enrollmentStatus === 'rejected' && (
+        {enrollmentStatus === 'Pending Assessment' && (
+          <Alert className="bg-orange-50 border-orange-200">
+            <Clock className="h-4 w-4 text-orange-600" />
+            <AlertTitle className="text-orange-900">Pending Assessment</AlertTitle>
+            <AlertDescription className="text-orange-700">
+              Your enrollment documents have been submitted and are awaiting registrar assessment.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {enrollmentStatus === 'Rejected' && (
           <Alert className="bg-red-50 border-red-200">
             <AlertCircle className="h-4 w-4 text-red-600" />
             <AlertTitle className="text-red-900">Enrollment Rejected</AlertTitle>
@@ -386,24 +522,24 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
 
   const renderEnrollmentContent = () => (
     <div>
-      {enrollmentStatus === 'pending' && (
+      {['Pending Assessment', 'For Admin Approval', 'For Dean Approval', 'Payment Verification'].includes(enrollmentStatus) && (
         <Card className="border-0 shadow-lg p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
             <Clock className="h-8 w-8 text-orange-600" />
           </div>
-          <h3 className="text-xl mb-2">Pre-Enrollment Pending</h3>
-          <p className="text-slate-600 mb-4">Your pre-enrollment is awaiting admin approval.</p>
-          <Badge className="bg-orange-100 text-orange-700 border-0">Pending Assessment</Badge>
+          <h3 className="text-xl mb-2">Enrollment {enrollmentStatus}</h3>
+          <p className="text-slate-600 mb-4">Your enrollment is being processed. Please wait for the next step.</p>
+          <Badge className="bg-orange-100 text-orange-700 border-0">{enrollmentStatus}</Badge>
         </Card>
       )}
 
-      {enrollmentStatus === 'approved' && (
+      {enrollmentStatus === 'For Subject Selection' && (
         <Card className="border-0 shadow-lg p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="h-8 w-8 text-green-600" />
           </div>
-          <h3 className="text-xl mb-2">Pre-Enrollment Approved!</h3>
-          <p className="text-slate-600 mb-4">You can now add subjects and proceed to payment.</p>
+          <h3 className="text-xl mb-2">Select Your Subjects</h3>
+          <p className="text-slate-600 mb-4">Your enrollment has been approved. Please select your subjects.</p>
           <div className="flex gap-2 justify-center">
             <Button 
               onClick={() => setActiveSection('Subjects')}
@@ -411,20 +547,85 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             >
               Add Subjects
             </Button>
+          </div>
+        </Card>
+      )}
+
+      {enrollmentStatus === 'For Payment' && currentEnrollment && (
+        <Card className="border-0 shadow-lg p-6">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="h-8 w-8 text-purple-600" />
+            </div>
+            <h3 className="text-xl mb-2">Proceed to Payment</h3>
+            <p className="text-slate-600 mb-4">Your subjects have been approved. Total amount: ₱{currentEnrollment.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}</p>
+            <div className="mb-4">
+              <Button variant="outline" onClick={() => openAssessmentModal(currentEnrollment.id)} disabled={loadingAssessment}>
+                {loadingAssessment ? <Loader2 className="h-4 w-4 animate-spin" /> : 'View Assessment'}
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Payment Method</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GCash">GCash</SelectItem>
+                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Online Payment">Online Payment</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Reference Number</Label>
+                <Input placeholder="Enter reference number" />
+              </div>
+            </div>
+            <div>
+              <Label>Upload Receipt (Optional)</Label>
+              <Input type="file" accept="image/*,.pdf" />
+            </div>
             <Button 
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600"
               onClick={() => {
-                setEnrollmentStep(1);
-                setStudentType('');
+                // This would be connected to handleSubmitPayment
+                alert('Payment submission will be implemented');
               }}
-              variant="outline"
             >
-              Start New Enrollment
+              Submit Payment
             </Button>
           </div>
         </Card>
       )}
 
-      {enrollmentStatus !== 'pending' && enrollmentStatus !== 'approved' && (
+      {enrollmentStatus === 'Enrolled' && (
+        <Card className="border-0 shadow-lg p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="h-8 w-8 text-green-600" />
+          </div>
+          <h3 className="text-xl mb-2">Enrollment Complete!</h3>
+          <p className="text-slate-600 mb-4">You are now enrolled. View your schedule and download your enrollment form.</p>
+          <div className="flex gap-2 justify-center">
+            <Button 
+              onClick={() => setActiveSection('My Schedule')}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600"
+            >
+              View Schedule
+            </Button>
+            <Button variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Download Enrollment Form
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {!['Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled'].includes(enrollmentStatus) && (
         <Card className="border-0 shadow-lg p-6">
           {/* Student Type Selection */}
           {enrollmentStep === 1 && (
@@ -703,12 +904,14 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
 
     return (
       <div>
-        {enrollmentStatus !== 'approved' && (
+        {enrollmentStatus !== 'For Subject Selection' && enrollmentStatus !== 'Enrolled' && (
           <Alert className="mb-4 bg-orange-50 border-orange-200">
             <AlertCircle className="h-4 w-4 text-orange-600" />
-            <AlertTitle className="text-orange-900">Enrollment Required</AlertTitle>
+            <AlertTitle className="text-orange-900">Subject Selection Not Available</AlertTitle>
             <AlertDescription className="text-orange-700">
-              You must complete and get approval for enrollment before you can manage subjects.
+              {enrollmentStatus === 'none' 
+                ? 'You must complete enrollment first before you can manage subjects.'
+                : `Your enrollment status is: ${enrollmentStatus}. Please complete the enrollment process first.`}
             </AlertDescription>
           </Alert>
         )}
@@ -729,7 +932,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                   <div 
                     key={index} 
                     className={`border rounded-lg p-4 transition-colors ${
-                      enrollmentStatus === 'approved' ? 'hover:bg-slate-50' : 'opacity-60'
+                      enrollmentStatus === 'For Subject Selection' ? 'hover:bg-slate-50' : 'opacity-60'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -748,7 +951,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                           <p className="text-sm text-slate-500">Course: {subject.course}</p>
                         )}
                       </div>
-                      {enrollmentStatus === 'approved' && currentEnrollment && (
+                      {(enrollmentStatus === 'For Subject Selection' || enrollmentStatus === 'Enrolled') && currentEnrollment && (
                         <div className="flex gap-2">
                           {!isEnrolledSubject ? (
                             <Button 
@@ -774,6 +977,33 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {enrollmentStatus === 'For Subject Selection' && currentCourses.length > 0 && (
+            <div className="mt-6 pt-6 border-t">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-blue-900 mb-2">
+                  <strong>Total Units:</strong> {currentCourses.reduce((sum: number, c: any) => sum + (c.units || 0), 0)}
+                </p>
+                <p className="text-sm text-blue-900">
+                  <strong>Subject Fees:</strong> ₱{(currentCourses.reduce((sum: number, c: any) => sum + (c.units || 0), 0) * 700).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <Button 
+                className="w-full bg-gradient-to-r from-green-600 to-green-700"
+                onClick={handleSubmitSubjects}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Subjects for Dean Approval'
+                )}
+              </Button>
             </div>
           )}
         </Card>
@@ -1127,9 +1357,9 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             >
               <ClipboardCheck className="h-4 w-4" />
               Enroll
-              {enrollmentStatus === 'pending' && (
+              {enrollmentStatus !== 'none' && enrollmentStatus !== 'Enrolled' && (
                 <Badge className="ml-auto bg-orange-500 text-white border-0 text-xs px-1.5 py-0">
-                  Pending
+                  {enrollmentStatus}
                 </Badge>
               )}
             </button>
@@ -1199,7 +1429,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 <p className="text-sm text-slate-600">Welcome back to your learning portal</p>
               </div>
               <div className="flex items-center gap-3">
-                {hasNewNotification && enrollmentStatus === 'approved' && (
+                {hasNewNotification && (enrollmentStatus === 'For Subject Selection' || enrollmentStatus === 'For Payment' || enrollmentStatus === 'Enrolled') && (
                   <button 
                     onClick={handleViewNotification}
                     className="relative p-2 hover:bg-slate-100 rounded-lg transition-colors"
@@ -1244,6 +1474,65 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             {activeSection === 'Subjects' && renderSubjectsContent()}
             {activeSection === 'My Schedule' && renderScheduleContent()}
             {activeSection === 'My Profile' && renderProfileContent()}
+            {/* Assessment Modal */}
+            <Dialog open={assessmentOpen} onOpenChange={setAssessmentOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Assessment Breakdown</DialogTitle>
+                  <DialogDescription>Review assessment fees and subject fees for this enrollment.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  <div>
+                    <h4 className="text-sm font-medium">Assessment Fees</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm mt-2">
+                      <div>Tuition</div>
+                      <div className="text-right">₱{(enrollmentDetails?.tuition || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div>Registration</div>
+                      <div className="text-right">₱{(enrollmentDetails?.registration || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div>Library</div>
+                      <div className="text-right">₱{(enrollmentDetails?.library || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div>Laboratory</div>
+                      <div className="text-right">₱{(enrollmentDetails?.lab || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div>ID Fee</div>
+                      <div className="text-right">₱{(enrollmentDetails?.id_fee || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div>Others</div>
+                      <div className="text-right">₱{(enrollmentDetails?.others || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium">Subject Fees</h4>
+                    <div className="text-sm mt-2">
+                      <div className="flex justify-between"><div>Total Units</div><div>{enrollmentDetails?.total_units || 0}</div></div>
+                      <div className="flex justify-between"><div>Rate per Unit</div><div>₱700.00</div></div>
+                      <div className="flex justify-between font-medium mt-2"><div>Subject Fees</div><div>₱{((enrollmentDetails?.total_units || 0) * 700).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
+
+                      <div className="mt-3">
+                        <h5 className="text-sm font-medium">Subjects</h5>
+                        <div className="mt-2 space-y-2">
+                          {currentCourses.map((s: any, idx: number) => (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <div>{s.code} — {s.name}</div>
+                              <div>{s.units} unit{s.units !== 1 ? 's' : ''} • ₱{(s.units * 700).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-3">
+                    <div className="flex justify-between font-semibold">
+                      <div>Total Amount</div>
+                      <div>₱{(enrollmentDetails?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-6">
+                  <Button variant="outline" onClick={() => setAssessmentOpen(false)}>Close</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>

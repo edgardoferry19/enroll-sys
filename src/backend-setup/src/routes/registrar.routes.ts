@@ -8,12 +8,17 @@ import {
   resolveClearance,
   getRegistrarDashboardStats
 } from '../controllers/registrar.controller';
+import { assessEnrollment, verifyPayment } from '../controllers/enrollment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
 const router = express.Router();
 
 // Dashboard
 router.get('/dashboard/stats', authenticate, authorize('registrar', 'superadmin'), getRegistrarDashboardStats);
+
+// Enrollment Assessment & Payment Verification
+router.put('/enrollments/:id/assess', authenticate, authorize('registrar', 'superadmin'), assessEnrollment);
+router.put('/enrollments/:id/verify-payment', authenticate, authorize('registrar', 'superadmin'), verifyPayment);
 
 // CORs
 router.get('/cors', authenticate, authorize('registrar', 'superadmin'), getAllCORs);

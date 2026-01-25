@@ -144,7 +144,8 @@ class AdminService {
    * Approve enrollment
    */
   async approveEnrollment(id: number, remarks?: string): Promise<any> {
-    return this.updateEnrollmentStatus(id, 'Approved', remarks);
+    // Use the dedicated approve-assessment endpoint which transitions to 'For Subject Selection'
+    return this.approveEnrollmentAssessment(id, remarks);
   }
 
   /**
@@ -159,6 +160,18 @@ class AdminService {
    */
   async assessEnrollment(id: number, remarks?: string): Promise<any> {
     return this.updateEnrollmentStatus(id, 'Assessed', remarks);
+  }
+
+  /**
+   * Approve enrollment assessment (moves to "For Subject Selection")
+   */
+  async approveEnrollmentAssessment(id: number, remarks?: string): Promise<any> {
+    try {
+      const response = await api.put(`/admin/enrollments/${id}/approve-assessment`, { remarks });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
   }
 }
 

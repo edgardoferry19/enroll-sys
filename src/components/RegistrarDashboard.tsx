@@ -42,6 +42,18 @@ interface RegistrarDashboardProps {
 
 export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps) {
   const [activeSection, setActiveSection] = useState('Dashboard');
+  const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
+  const [assessDialogOpen, setAssessDialogOpen] = useState(false);
+  const [selectedEnrollmentForAssess, setSelectedEnrollmentForAssess] = useState<any>(null);
+  const [assessmentForm, setAssessmentForm] = useState({
+    tuition: 0,
+    registration: 0,
+    library: 0,
+    lab: 0,
+    id_fee: 0,
+    others: 0,
+    remarks: ''
+  });
   const [loading, setLoading] = useState(true);
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [studentRecords, setStudentRecords] = useState<any[]>([]);
@@ -92,6 +104,13 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
       } else if (activeSection === 'Grades Management') {
         // For now, we'll show placeholder. In a real system, this would fetch from enrollment_subjects
         setGradeSubmissions([]);
+        } else if (activeSection === 'Pending Enrollments') {
+          // Fetch enrollments in 'Pending Assessment' status
+          const pendingResp = await adminService.getAllEnrollments({ status: 'Pending Assessment' });
+          if (pendingResp) {
+            const list = pendingResp.data || pendingResp || [];
+            setPendingEnrollments(list);
+          }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch data');
@@ -109,6 +128,28 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
       alert('COR generated successfully!');
     } catch (err: any) {
       setError(err.message || 'Failed to generate COR');
+    }
+  };
+
+  const openAssessDialog = (enrollment: any) => {
+    setSelectedEnrollmentForAssess(enrollment);
+    setAssessmentForm({ tuition: 0, registration: 0, library: 0, lab: 0, id_fee: 0, others: 0, remarks: '' });
+    setAssessDialogOpen(true);
+  };
+
+  const handleAssessEnrollment = async () => {
+    if (!selectedEnrollmentForAssess) return;
+    try {
+      setLoading(true);
+      await registrarService.assessEnrollment(selectedEnrollmentForAssess.id, assessmentForm);
+      setAssessDialogOpen(false);
+      alert('Enrollment assessed successfully');
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Failed to assess enrollment');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -590,11 +631,58 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
     );
   };
 
+  const renderPendingEnrollmentsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Card className="border-0 shadow-lg">
+          <div className="p-6">
+            {pendingEnrollments.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No pending enrollments</p>
+            ) : (
+              <div className="space-y-4">
+                {pendingEnrollments.map((e) => (
+                  <div key={e.id} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="text-slate-900">{e.student?.first_name} {e.student?.last_name}</h4>
+                        <p className="text-sm text-slate-500">Enrollment #{e.id} • {e.school_year} • {e.semester}</p>
+                        <p className="text-sm text-slate-600 mt-2">Status: {e.status}</p>
+                        <p className="text-xs text-slate-400 mt-1">Submitted {formatTimeAgo(e.created_at)}</p>
+                      </div>
+                      <Badge className="bg-orange-100 text-orange-700 border-0 text-xs">{e.status}</Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="bg-gradient-to-r from-green-600 to-green-700" onClick={() => openAssessDialog(e)}>
+                        Assess
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleGenerateCOR(e.id)}>
+                        Generate COR
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
     { name: 'Student Records', icon: Users },
     { name: 'Grades Management', icon: ClipboardCheck },
     { name: 'COR Management', icon: Award },
+    { name: 'Pending Enrollments', icon: FileText },
     { name: 'Clearances', icon: CheckCircle },
   ];
 
@@ -667,9 +755,56 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
             {activeSection === 'Grades Management' && renderGradesManagementContent()}
             {activeSection === 'COR Management' && renderCORManagementContent()}
             {activeSection === 'Clearances' && renderClearanceContent()}
+            {activeSection === 'Pending Enrollments' && renderPendingEnrollmentsContent()}
           </div>
         </div>
       </div>
+      
+      {/* Assessment Dialog */}
+      <Dialog open={assessDialogOpen} onOpenChange={setAssessDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assess Enrollment</DialogTitle>
+            <DialogDescription>Enter assessment fees for the selected enrollment.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Tuition</Label>
+                <Input type="number" value={assessmentForm.tuition} onChange={(e) => setAssessmentForm({...assessmentForm, tuition: Number(e.target.value)})} />
+              </div>
+              <div>
+                <Label>Registration</Label>
+                <Input type="number" value={assessmentForm.registration} onChange={(e) => setAssessmentForm({...assessmentForm, registration: Number(e.target.value)})} />
+              </div>
+              <div>
+                <Label>Library</Label>
+                <Input type="number" value={assessmentForm.library} onChange={(e) => setAssessmentForm({...assessmentForm, library: Number(e.target.value)})} />
+              </div>
+              <div>
+                <Label>Lab</Label>
+                <Input type="number" value={assessmentForm.lab} onChange={(e) => setAssessmentForm({...assessmentForm, lab: Number(e.target.value)})} />
+              </div>
+              <div>
+                <Label>ID Fee</Label>
+                <Input type="number" value={assessmentForm.id_fee} onChange={(e) => setAssessmentForm({...assessmentForm, id_fee: Number(e.target.value)})} />
+              </div>
+              <div>
+                <Label>Others</Label>
+                <Input type="number" value={assessmentForm.others} onChange={(e) => setAssessmentForm({...assessmentForm, others: Number(e.target.value)})} />
+              </div>
+            </div>
+            <div>
+              <Label>Remarks</Label>
+              <Input value={assessmentForm.remarks} onChange={(e) => setAssessmentForm({...assessmentForm, remarks: e.target.value})} />
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <Button variant="outline" onClick={() => setAssessDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleAssessEnrollment}>Assess</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

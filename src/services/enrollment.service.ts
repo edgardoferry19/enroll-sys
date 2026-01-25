@@ -88,6 +88,38 @@ class EnrollmentService {
       throw new Error(handleApiError(error));
     }
   }
+
+  /**
+   * Submit subjects for Dean approval
+   */
+  async submitSubjects(enrollmentId: number): Promise<any> {
+    try {
+      const response = await api.put(`/enrollments/${enrollmentId}/submit-subjects`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
+   * Submit payment
+   */
+  async submitPayment(
+    enrollmentId: number,
+    paymentData: {
+      payment_method: string;
+      reference_number: string;
+      receipt_path?: string;
+      amount?: number;
+    }
+  ): Promise<any> {
+    try {
+      const response = await api.put(`/enrollments/${enrollmentId}/submit-payment`, paymentData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const enrollmentService = new EnrollmentService();

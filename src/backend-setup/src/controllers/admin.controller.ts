@@ -313,12 +313,11 @@ export const getAllEnrollments = async (req: AuthRequest, res: Response) => {
       SELECT e.*, 
         s.student_id, s.first_name, s.middle_name, s.last_name,
         s.course, s.year_level,
-        COUNT(es.id) as subject_count,
-        SUM(sub.units) as total_units
+        (SELECT COUNT(*) FROM enrollment_subjects es WHERE es.enrollment_id = e.id) as subject_count,
+        (SELECT SUM(sub.units) FROM enrollment_subjects es2 JOIN subjects sub ON es2.subject_id = sub.id WHERE es2.enrollment_id = e.id) as total_units,
+        (SELECT COUNT(*) FROM documents d WHERE d.enrollment_id = e.id) as documents_count
       FROM enrollments e
       JOIN students s ON e.student_id = s.id
-      LEFT JOIN enrollment_subjects es ON e.id = es.enrollment_id
-      LEFT JOIN subjects sub ON es.subject_id = sub.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -338,7 +337,7 @@ export const getAllEnrollments = async (req: AuthRequest, res: Response) => {
       params.push(semester);
     }
 
-    sql += ' GROUP BY e.id ORDER BY e.created_at DESC';
+    sql += ' ORDER BY e.created_at DESC';
 
     const enrollments = await query(sql, params);
 
@@ -391,12 +390,19 @@ export const getEnrollmentById = async (req: AuthRequest, res: Response) => {
       [id]
     );
 
+    // Get documents for this enrollment
+    const documents = await query(
+      'SELECT * FROM documents WHERE enrollment_id = ? ORDER BY upload_date DESC',
+      [id]
+    );
+
     res.json({
       success: true,
       data: {
         enrollment: enrollments[0],
         subjects,
-        transactions
+        transactions,
+        documents
       }
     });
   } catch (error) {
@@ -424,10 +430,18 @@ export const updateEnrollmentStatus = async (req: AuthRequest, res: Response) =>
       updateFields.approved_at = new Date().toISOString();
     }
 
-    const setClause = Object.keys(updateFields)
-      .map(key => `${key} = ?`)
-      .join(', ');
-    const values = Object.values(updateFields);
+    // Remove undefined values so we don't bind unexpected undefineds
+    const entries = Object.entries(updateFields).filter(([_, v]) => v !== undefined);
+    if (entries.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    const keys = entries.map(([k]) => k);
+    const values = entries.map(([_, v]) => v);
+    const setClause = keys.map(key => `${key} = ?`).join(', ');
+
+    // Log SQL for easier debugging
+    console.log('Update enrollment SQL:', `UPDATE enrollments SET ${setClause}, updated_at = datetime('now') WHERE id = ?`, 'values:', [...values, id]);
 
     await run(
       `UPDATE enrollments SET ${setClause}, updated_at = datetime('now') WHERE id = ?`,

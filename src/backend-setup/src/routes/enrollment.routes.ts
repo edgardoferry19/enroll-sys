@@ -5,7 +5,9 @@ import {
   getEnrollmentDetails,
   addSubjectToEnrollment,
   removeSubjectFromEnrollment,
-  submitForAssessment
+  submitForAssessment,
+  submitSubjects,
+  submitPayment
 } from '../controllers/enrollment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -17,5 +19,7 @@ router.get('/:id', authenticate, getEnrollmentDetails);
 router.post('/:id/subjects', authenticate, authorize('student'), addSubjectToEnrollment);
 router.delete('/:id/subjects/:subjectId', authenticate, authorize('student'), removeSubjectFromEnrollment);
 router.put('/:id/submit', authenticate, authorize('student'), submitForAssessment);
+router.put('/:id/submit-subjects', authenticate, authorize('student'), submitSubjects);
+router.put('/:id/submit-payment', authenticate, authorize('student'), submitPayment);
 
 export default router;

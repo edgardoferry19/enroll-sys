@@ -17,6 +17,7 @@ import {
   updateFaculty,
   deleteFaculty
 } from '../controllers/faculty.controller';
+import { approveEnrollmentAssessment } from '../controllers/enrollment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
 const router = express.Router();
@@ -42,5 +43,6 @@ router.delete('/teachers/:id', authenticate, authorize('admin', 'superadmin'), d
 router.get('/enrollments', authenticate, authorize('admin', 'superadmin', 'dean', 'registrar'), getAllEnrollments);
 router.get('/enrollments/:id', authenticate, authorize('admin', 'superadmin', 'dean', 'registrar'), getEnrollmentById);
 router.put('/enrollments/:id/status', authenticate, authorize('admin', 'superadmin', 'registrar'), updateEnrollmentStatus);
+router.put('/enrollments/:id/approve-assessment', authenticate, authorize('admin', 'superadmin'), approveEnrollmentAssessment);
 
 export default router;

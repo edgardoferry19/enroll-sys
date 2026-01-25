@@ -101,6 +101,28 @@ class DeanService {
       throw new Error(handleApiError(error));
     }
   }
+
+  /**
+   * Approve subject selection (moves to "For Payment")
+   */
+  async approveSubjectSelection(enrollmentId: number, remarks?: string): Promise<any> {
+    try {
+      const response = await api.put(`/dean/enrollments/${enrollmentId}/approve-subjects`, { remarks });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  // Fetch enrollments (admin endpoint is accessible to dean) with optional filters
+  async getEnrollments(filters?: { status?: string }): Promise<any> {
+    try {
+      const response = await api.get('/admin/enrollments', { params: filters });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const deanService = new DeanService();

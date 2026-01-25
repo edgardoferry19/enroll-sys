@@ -10,12 +10,16 @@ import {
   removeSubjectFromCurriculum,
   getDeanDashboardStats
 } from '../controllers/dean.controller';
+import { approveSubjectSelection } from '../controllers/enrollment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
 const router = express.Router();
 
 // Dashboard
 router.get('/dashboard/stats', authenticate, authorize('dean', 'superadmin'), getDeanDashboardStats);
+
+// Enrollment Subject Approval
+router.put('/enrollments/:id/approve-subjects', authenticate, authorize('dean', 'superadmin'), approveSubjectSelection);
 
 // Programs
 router.get('/programs', authenticate, authorize('dean', 'superadmin'), getAllPrograms);
