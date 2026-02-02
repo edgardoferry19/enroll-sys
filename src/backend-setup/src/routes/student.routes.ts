@@ -3,7 +3,9 @@ import {
   getStudentProfile,
   updateStudentProfile,
   getStudentEnrollments,
-  uploadDocument
+  uploadDocument,
+  downloadDocument,
+  getDocumentByPath
 } from '../controllers/student.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import multer from 'multer';
@@ -43,5 +45,7 @@ router.get('/profile', authenticate, authorize('student'), getStudentProfile);
 router.put('/profile', authenticate, authorize('student'), updateStudentProfile);
 router.get('/enrollments', authenticate, authorize('student'), getStudentEnrollments);
 router.post('/documents', authenticate, authorize('student'), upload.single('document'), uploadDocument);
+router.get('/documents/:id/download', authenticate, downloadDocument);
+router.get('/documents/download', authenticate, getDocumentByPath);
 
 export default router;

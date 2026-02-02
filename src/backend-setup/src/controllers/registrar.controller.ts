@@ -294,3 +294,62 @@ export const getRegistrarDashboardStats = async (req: AuthRequest, res: Response
     });
   }
 };
+
+// Assign a student/enrollment to a section
+export const assignStudentToSection = async (req: AuthRequest, res: Response) => {
+  try {
+    const { enrollment_id, section_id } = req.body;
+    const userId = req.user?.id;
+
+    if (!enrollment_id || !section_id) {
+      return res.status(400).json({ success: false, message: 'enrollment_id and section_id are required' });
+    }
+
+    // Update enrollment record with section
+    await run(
+      `UPDATE enrollments SET section_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      [section_id, enrollment_id]
+    );
+
+    // Log activity
+    await run(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description) VALUES (?, ?, ?, ?, ?)',
+      [userId, 'ASSIGN_SECTION', 'enrollment', enrollment_id, `Assigned to section ${section_id}`]
+    );
+
+    res.json({ success: true, message: 'Student assigned to section' });
+  } catch (error) {
+    console.error('Assign student to section error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Enrollment reports: totals per semester, per section, pending enrollments
+export const getEnrollmentReport = async (req: AuthRequest, res: Response) => {
+  try {
+    // Total enrolled per semester
+    const perSemester = await query(
+      `SELECT school_year || ' ' || semester AS period, COUNT(*) as total
+       FROM enrollments
+       WHERE status = 'Enrolled'
+       GROUP BY school_year, semester
+       ORDER BY school_year DESC, semester`)
+;
+
+    // Number of students per section
+    const perSection = await query(
+      `SELECT sec.id as section_id, sec.name as section_name, COUNT(e.id) as total
+       FROM enrollments e
+       LEFT JOIN sections sec ON e.section_id = sec.id
+       WHERE e.status = 'Enrolled'
+       GROUP BY sec.id, sec.name`);
+
+    // Pending enrollments
+    const pending = await query(`SELECT COUNT(*) as total FROM enrollments WHERE status != 'Enrolled'`);
+
+    res.json({ success: true, data: { perSemester, perSection, pending: pending[0]?.total || 0 } });
+  } catch (error) {
+    console.error('Get enrollment report error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

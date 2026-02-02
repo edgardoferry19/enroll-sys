@@ -30,4 +30,11 @@ router.get('/clearances', authenticate, authorize('registrar', 'superadmin'), ge
 router.post('/clearances', authenticate, authorize('registrar', 'superadmin'), createClearance);
 router.put('/clearances/:id/resolve', authenticate, authorize('registrar', 'superadmin'), resolveClearance);
 
+// Section assignment
+import { assignStudentToSection, getEnrollmentReport } from '../controllers/registrar.controller';
+router.post('/sections/assign', authenticate, authorize('registrar', 'admin', 'superadmin'), assignStudentToSection);
+
+// Reports
+router.get('/reports/enrollments', authenticate, authorize('registrar', 'admin', 'superadmin'), getEnrollmentReport);
+
 export default router;

@@ -167,3 +167,37 @@ export const getGradesBySection = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+// Approve/finalize a grade (Dean action) - records approval in a lightweight approvals table
+export const approveGrade = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // enrollment_subject id
+    const { remarks } = req.body;
+    const userId = req.user?.id;
+
+    // Ensure table exists
+    await run(`CREATE TABLE IF NOT EXISTS grade_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      enrollment_subject_id INTEGER,
+      approved_by INTEGER,
+      remarks TEXT,
+      approved_at TEXT
+    )`);
+
+    const result = await run(
+      `INSERT INTO grade_approvals (enrollment_subject_id, approved_by, remarks, approved_at) VALUES (?, ?, ?, datetime('now'))`,
+      [id, userId, remarks || null]
+    );
+
+    // Log activity
+    await run(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description) VALUES (?, ?, ?, ?, ?)',
+      [userId, 'APPROVE_GRADE', 'enrollment_subject', id, `Grade approved by user ${userId}`]
+    );
+
+    res.json({ success: true, message: 'Grade approved successfully', data: { id: result.lastInsertRowid } });
+  } catch (error) {
+    console.error('Approve grade error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

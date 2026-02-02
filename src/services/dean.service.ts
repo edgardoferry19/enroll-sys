@@ -123,6 +123,15 @@ class DeanService {
       throw new Error(handleApiError(error));
     }
   }
+
+  async reassignTeacher(payload: { teacherId: string; fromSubjectId?: string; toSubjectId?: string; }) {
+    try {
+      const response = await api.post('/courses/reassign', payload);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const deanService = new DeanService();

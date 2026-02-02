@@ -8,7 +8,7 @@ export interface LoginCredentials {
 export interface User {
   id: number;
   username: string;
-  role: 'student' | 'admin' | 'superadmin' | 'dean' | 'registrar';
+  role: 'student' | 'admin' | 'superadmin' | 'dean' | 'registrar' | 'cashier';
   email: string;
 }
 

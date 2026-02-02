@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { query, run } from '../database/connection';
 import { AuthRequest } from '../middleware/auth.middleware';
 import fs from 'fs';
+import path from 'path';
 
 export const getStudentProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -217,5 +218,56 @@ export const uploadDocument = async (req: AuthRequest, res: Response) => {
       success: false,
       message: 'Server error'
     });
+  }
+};
+
+export const downloadDocument = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const docs = await query('SELECT * FROM documents WHERE id = ?', [id]);
+    if (docs.length === 0) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+
+    const doc = docs[0];
+    const filePath = doc.file_path;
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'File not found on server' });
+    }
+
+    // Set content disposition for download
+    res.setHeader('Content-Disposition', `attachment; filename="${doc.file_name}"`);
+    res.sendFile(path.resolve(filePath));
+  } catch (error) {
+    console.error('Download document error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const getDocumentByPath = async (req: AuthRequest, res: Response) => {
+  try {
+    const filePath = req.query.path as string;
+    
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'File path required' });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'File not found on server' });
+    }
+
+    // Get filename from path
+    const fileName = path.basename(filePath);
+    
+    // Set content disposition for download
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.sendFile(path.resolve(filePath));
+  } catch (error) {
+    console.error('Get document by path error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };

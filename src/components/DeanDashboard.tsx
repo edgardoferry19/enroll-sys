@@ -50,6 +50,8 @@ import {
 import { deanService } from '../services/dean.service';
 import { facultyService } from '../services/faculty.service';
 import { subjectService } from '../services/subject.service';
+import CoursesManagement from './CoursesManagement';
+import { gradesService } from '../services/grades.service';
 
 interface DeanDashboardProps {
   onLogout: () => void;
@@ -64,6 +66,12 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
   const [programs, setPrograms] = useState<any[]>([]);
   const [curriculum, setCurriculum] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [gradesList, setGradesList] = useState<any[]>([]);
+  const [selectedSection, setSelectedSection] = useState<string>('');
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('');
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignForm, setReassignForm] = useState({ teacherId: '', fromSubjectId: '', toSubjectId: '' });
+  const [gradesDialogOpen, setGradesDialogOpen] = useState(false);
   const [error, setError] = useState<string>('');
   const [addFacultyOpen, setAddFacultyOpen] = useState(false);
   const [editFacultyOpen, setEditFacultyOpen] = useState(false);
@@ -124,6 +132,10 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
   useEffect(() => {
     fetchData();
   }, [activeSection]);
+
+  useEffect(() => {
+    loadSubjects();
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -292,6 +304,49 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
     } catch (err: any) {
       setError(err.message || 'Failed to approve subjects');
       setApprovingId(null);
+    }
+  };
+
+  const loadGrades = async () => {
+    try {
+      setLoading(true);
+      const resp = await gradesService.getGradesBySection({ sectionId: selectedSection || undefined, subjectId: selectedSubjectFilter || undefined });
+      if (resp?.data) setGradesList(resp.data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load grades');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveGrade = async (enrollmentSubjectId: number) => {
+    try {
+      setLoading(true);
+      await gradesService.approveGrade(enrollmentSubjectId);
+      await loadGrades();
+    } catch (err: any) {
+      setError(err.message || 'Failed to approve grade');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenReassign = (teacherId?: string) => {
+    setReassignForm({ teacherId: teacherId || '', fromSubjectId: '', toSubjectId: '' });
+    setReassignOpen(true);
+  };
+
+  const handleReassignTeacher = async () => {
+    try {
+      setLoading(true);
+      await deanService.reassignTeacher(reassignForm);
+      setReassignOpen(false);
+      setReassignForm({ teacherId: '', fromSubjectId: '', toSubjectId: '' });
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to reassign teacher');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -532,6 +587,9 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Delete
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenReassign(faculty.id)}>
+                          Reassign
                         </Button>
                       </div>
                     </div>
@@ -805,6 +863,115 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
         </Card>
 
         {/* Add Program Dialog */}
+        {/* Reassign Teacher Dialog */}
+        <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reassign Teacher</DialogTitle>
+              <DialogDescription>Reassign a teacher from one subject to another for workload balancing.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 mt-4">
+              <div>
+                <Label>Teacher</Label>
+                <Select value={reassignForm.teacherId} onValueChange={(v) => setReassignForm({ ...reassignForm, teacherId: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {facultyMembers.map(f => (<SelectItem key={f.id} value={f.id}>{f.first_name} {f.last_name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>From Subject</Label>
+                <Select value={reassignForm.fromSubjectId} onValueChange={(v) => setReassignForm({ ...reassignForm, fromSubjectId: v })}>
+                  <SelectTrigger><SelectValue placeholder="From subject" /></SelectTrigger>
+                  <SelectContent>
+                    {subjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.subject_code} - {s.subject_name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>To Subject</Label>
+                <Select value={reassignForm.toSubjectId} onValueChange={(v) => setReassignForm({ ...reassignForm, toSubjectId: v })}>
+                  <SelectTrigger><SelectValue placeholder="To subject" /></SelectTrigger>
+                  <SelectContent>
+                    {subjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.subject_code} - {s.subject_name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={() => setReassignOpen(false)}>Cancel</Button>
+              <Button className="ml-2" onClick={handleReassignTeacher}>Reassign</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Grades Review Dialog */}
+        <Dialog open={gradesDialogOpen} onOpenChange={setGradesDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Grades Review</DialogTitle>
+              <DialogDescription>Load grades by section/subject and approve individual grades.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Section</Label>
+                  <Select value={selectedSection} onValueChange={setSelectedSection}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select section" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Sections will be loaded via subjects for simplicity placeholder */}
+                      <SelectItem value="">All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Subject</Label>
+                  <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All</SelectItem>
+                      {subjects.map(s => (<SelectItem key={s.id} value={s.id}>{s.subject_code} - {s.subject_name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={loadGrades}>Load Grades</Button>
+                <Button variant="outline" onClick={() => { setSelectedSection(''); setSelectedSubjectFilter(''); setGradesList([]); }}>Reset</Button>
+              </div>
+
+              <div>
+                {gradesList.length === 0 ? (
+                  <p className="text-sm text-slate-500">No grades loaded</p>
+                ) : (
+                  <div className="space-y-2">
+                    {gradesList.map((g: any) => (
+                      <div key={g.id} className="flex items-center justify-between p-2 border rounded">
+                        <div>
+                          <div className="font-medium">{g.student_name} — {g.subject_code}</div>
+                          <div className="text-xs text-slate-500">Grade: {g.grade || 'N/A'}</div>
+                        </div>
+                        <div>
+                          <Button size="sm" onClick={() => handleApproveGrade(g.id)}>Approve</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={() => setGradesDialogOpen(false)}>Close</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={addProgramOpen} onOpenChange={setAddProgramOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -907,6 +1074,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
           <h3 className="text-lg font-medium">Enrollments - For Dean Approval</h3>
           <div>
             <Button variant="outline" onClick={fetchForDeanEnrollments}>Refresh</Button>
+            <Button variant="outline" className="ml-2" onClick={() => setGradesDialogOpen(true)}>Grades Review</Button>
           </div>
         </div>
 
@@ -1108,6 +1276,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
     { name: 'Dashboard', icon: LayoutDashboard },
     { name: 'Faculty Management', icon: Users },
     { name: 'Program Management', icon: BookOpen },
+    { name: 'Courses', icon: BookOpen },
     { name: 'Curriculum', icon: FileText },
     { name: 'For Dean Approval', icon: Award },
   ];
@@ -1179,6 +1348,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
             {activeSection === 'Dashboard' && renderDashboardContent()}
             {activeSection === 'Faculty Management' && renderFacultyManagementContent()}
             {activeSection === 'Program Management' && renderProgramManagementContent()}
+            {activeSection === 'Courses' && <CoursesManagement />}
             {activeSection === 'Curriculum' && renderCurriculumContent()}
             {activeSection === 'For Dean Approval' && renderDeanApprovalsContent()}
           </div>

@@ -1,6 +1,24 @@
 import api, { handleApiError } from '../utils/api';
 
 class RegistrarService {
+  async assignSection(enrollmentId: number, sectionId: number): Promise<any> {
+    try {
+      const response = await api.post('/registrar/sections/assign', { enrollment_id: enrollmentId, section_id: sectionId });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async getEnrollmentReport(): Promise<any> {
+    try {
+      const response = await api.get('/registrar/reports/enrollments');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   async getDashboardStats(): Promise<any> {
     try {
       const response = await api.get('/registrar/dashboard/stats');

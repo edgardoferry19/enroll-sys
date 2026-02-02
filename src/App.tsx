@@ -5,9 +5,10 @@ import StudentDashboard from './components/StudentDashboard';
 import SuperadminDashboard from './components/SuperadminDashboard';
 import DeanDashboard from './components/DeanDashboard';
 import RegistrarDashboard from './components/RegistrarDashboard';
+import CashierDashboard from './components/CashierDashboard';
 import { authService } from './services/auth.service';
 
-export type UserRole = 'student' | 'admin' | 'superadmin' | 'dean' | 'registrar';
+export type UserRole = 'student' | 'admin' | 'superadmin' | 'dean' | 'registrar' | 'cashier';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'login' | UserRole>('login');
@@ -60,6 +61,7 @@ export default function App() {
       {currentView === 'dean' && <DeanDashboard onLogout={handleLogout} />}
       {currentView === 'registrar' && <RegistrarDashboard onLogout={handleLogout} />}
       {currentView === 'admin' && <AdminDashboard onLogout={handleLogout} />}
+      {currentView === 'cashier' && <CashierDashboard onLogout={handleLogout} />}
       {currentView === 'student' && <StudentDashboard onLogout={handleLogout} />}
     </div>
   );

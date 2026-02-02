@@ -1,6 +1,15 @@
 import api, { handleApiError } from '../utils/api';
 
 class GradesService {
+  async approveGrade(enrollmentSubjectId: number, remarks?: string): Promise<any> {
+    try {
+      const response = await api.post(`/grades/${enrollmentSubjectId}/approve`, { remarks });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   async getStudentGrades(studentId: string, filters?: {
     school_year?: string;
     semester?: string;

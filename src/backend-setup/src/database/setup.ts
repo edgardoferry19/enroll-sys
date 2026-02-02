@@ -15,7 +15,7 @@ async function setupDatabase() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('student', 'admin', 'superadmin', 'dean', 'registrar')),
+        role TEXT NOT NULL CHECK(role IN ('student', 'admin', 'superadmin', 'dean', 'registrar', 'cashier', 'faculty')),
         email TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
@@ -196,11 +196,11 @@ async function setupDatabase() {
         enrollment_id INTEGER NOT NULL,
         transaction_type TEXT NOT NULL CHECK(transaction_type IN ('Enrollment Fee', 'Tuition', 'Miscellaneous', 'Refund', 'Other')),
         amount REAL NOT NULL,
-        payment_method TEXT NOT NULL CHECK(payment_method IN ('Cash', 'Bank Transfer', 'Credit Card', 'Debit Card', 'Online Payment', 'Check')),
+        payment_method TEXT NOT NULL CHECK(payment_method IN ('Cash', 'Bank Transfer', 'Credit Card', 'Debit Card', 'Online Payment', 'Check', 'GCash')),
         reference_number TEXT,
         payment_date TEXT DEFAULT (datetime('now')),
         processed_by INTEGER,
-        status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Completed', 'Cancelled', 'Refunded')),
+        status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Completed', 'Cancelled', 'Refunded', 'Rejected')),
         remarks TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
@@ -407,7 +407,8 @@ async function setupDatabase() {
       ['superadmin', hashedPassword, 'superadmin', 'superadmin@informatics.edu'],
       ['admin1', hashedPassword, 'admin', 'admin@informatics.edu'],
       ['dean1', hashedPassword, 'dean', 'dean@informatics.edu'],
-      ['registrar1', hashedPassword, 'registrar', 'registrar@informatics.edu']
+      ['registrar1', hashedPassword, 'registrar', 'registrar@informatics.edu'],
+      ['cashier1', hashedPassword, 'cashier', 'cashier@informatics.edu']
     ];
 
     const insertUser = db.prepare('INSERT OR IGNORE INTO users (username, password, role, email) VALUES (?, ?, ?, ?)');

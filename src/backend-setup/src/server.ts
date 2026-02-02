@@ -17,6 +17,12 @@ import gradesRoutes from './routes/grades.routes';
 import registrarRoutes from './routes/registrar.routes';
 import deanRoutes from './routes/dean.routes';
 import superadminRoutes from './routes/superadmin.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import logsRoutes from './routes/logs.routes';
+import coursesRoutes from './routes/courses.routes';
+import paymentsRoutes from './routes/payments.routes';
+import curriculumRoutes from './routes/curriculum.routes';
+import cashierRoutes from './routes/cashier.routes';
 
 // Load environment variables
 dotenv.config();
@@ -54,6 +60,12 @@ app.use('/api/grades', gradesRoutes);
 app.use('/api/registrar', registrarRoutes);
 app.use('/api/dean', deanRoutes);
 app.use('/api/superadmin', superadminRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/logs', logsRoutes);
+app.use('/api/courses', coursesRoutes);
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/curriculum', curriculumRoutes);
+app.use('/api/cashier', cashierRoutes);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {

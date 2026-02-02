@@ -21,6 +21,7 @@ import {
 import { enrollmentService } from '../services/enrollment.service';
 import { studentService } from '../services/student.service';
 import { subjectService } from '../services/subject.service';
+import paymentsService from '../services/payments.service';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -67,6 +68,9 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [enrollmentDetails, setEnrollmentDetails] = useState<any>(null);
   const [assessmentOpen, setAssessmentOpen] = useState(false);
   const [loadingAssessment, setLoadingAssessment] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [assessmentData, setAssessmentData] = useState<any>(null);
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File>>({});
   const [schoolYear, setSchoolYear] = useState('2024-2025');
   const [semester, setSemester] = useState('1st Semester');
@@ -113,6 +117,26 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
           gender: student.gender || '',
           username: student.username || ''
         });
+        
+        // Auto-set student type from admin-assigned value
+        if (student.student_type) {
+          const typeMap: Record<string, string> = {
+            'New': 'new',
+            'Transferee': 'transferee',
+            'Returning': 'returning',
+            'Continuing': 'continuing',
+            'Scholar': 'scholar',
+            'new': 'new',
+            'transferee': 'transferee',
+            'returning': 'returning',
+            'continuing': 'continuing',
+            'scholar': 'scholar'
+          };
+          const mappedType = typeMap[student.student_type] || student.student_type.toLowerCase();
+          setStudentType(mappedType);
+          // Skip step 1 (manual selection) and go straight to step 2
+          setEnrollmentStep(2);
+        }
       }
       
       // Fetch enrollments (backend returns { success, data: [...] })
@@ -351,6 +375,35 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     setHasNewNotification(false);
   };
 
+  const openPaymentsModal = async (studentId?: string) => {
+    try {
+      setLoadingAssessment(true);
+      const id = studentId || studentProfile?.student_id;
+      if (!id) return;
+      const assessmentResp = await paymentsService.getAssessment(id.toString());
+      const paymentsResp = await paymentsService.listPayments(id.toString());
+      setAssessmentData(assessmentResp?.data || assessmentResp);
+      setPaymentHistory(paymentsResp?.data || paymentsResp || []);
+      setPaymentsOpen(true);
+    } catch (err: any) {
+      console.error('Failed to load payments:', err);
+      alert(err.message || 'Failed to load payments');
+    } finally {
+      setLoadingAssessment(false);
+    }
+  };
+
+  const handleDownloadEnrollmentForm = (enrollmentId?: any) => {
+    const id = enrollmentId || currentEnrollment?.id;
+    if (!id) {
+      alert('No enrollment form available');
+      return;
+    }
+    // Attempt to download from uploads folder; fallback to alert
+    const url = `/uploads/documents/enrollment-form-${id}.pdf`;
+    window.open(url, '_blank');
+  };
+
   const handleUpdateProfile = async () => {
     try {
       setLoading(true);
@@ -388,6 +441,187 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Payment Form Component
+  const PaymentForm = ({ 
+    enrollment, 
+    onViewAssessment, 
+    loadingAssessment, 
+    onSubmit, 
+    loading 
+  }: { 
+    enrollment: any; 
+    onViewAssessment: () => void; 
+    loadingAssessment: boolean; 
+    onSubmit: (data: any) => void;
+    loading: boolean;
+  }) => {
+    const [paymentMethod, setPaymentMethod] = useState('');
+    const [referenceNumber, setReferenceNumber] = useState('');
+    const [receiptFile, setReceiptFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const handleSubmit = async () => {
+      if (!paymentMethod) {
+        alert('Please select a payment method');
+        return;
+      }
+      if (!referenceNumber) {
+        alert('Please enter reference number');
+        return;
+      }
+
+      try {
+        setUploading(true);
+        let receiptPath = '';
+        
+        // Upload receipt first if provided
+        if (receiptFile) {
+          const uploadResp = await studentService.uploadDocument(
+            receiptFile, 
+            'payment_receipt', 
+            enrollment.id
+          );
+          receiptPath = uploadResp?.data?.file_path || '';
+        }
+
+        // Submit payment
+        await onSubmit({
+          payment_method: paymentMethod,
+          reference_number: referenceNumber,
+          receipt_path: receiptPath,
+          amount: enrollment.total_amount
+        });
+      } catch (error: any) {
+        alert(error.message || 'Failed to submit payment');
+      } finally {
+        setUploading(false);
+      }
+    };
+
+    return (
+      <Card className="border-0 shadow-lg p-6">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="h-8 w-8 text-purple-600" />
+          </div>
+          <h3 className="text-xl font-semibold mb-2">Proceed to Payment</h3>
+          <p className="text-slate-600 mb-4">
+            Your subjects have been approved. Total amount: ₱{enrollment.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
+          </p>
+          
+          {/* Assessment Breakdown */}
+          <div className="bg-slate-50 rounded-lg p-4 mb-4 text-left">
+            <h4 className="font-medium mb-2">Assessment Breakdown</h4>
+            <div className="text-sm space-y-1">
+              {enrollment.tuition > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Tuition Fee</span>
+                  <span>₱{enrollment.tuition?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {enrollment.registration > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Registration Fee</span>
+                  <span>₱{enrollment.registration?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {enrollment.library > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Library Fee</span>
+                  <span>₱{enrollment.library?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {enrollment.lab > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Laboratory Fee</span>
+                  <span>₱{enrollment.lab?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {enrollment.id_fee > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">ID Fee</span>
+                  <span>₱{enrollment.id_fee?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {enrollment.others > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Other Fees</span>
+                  <span>₱{enrollment.others?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold border-t pt-2 mt-2">
+                <span>Total</span>
+                <span>₱{enrollment.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <Button variant="outline" onClick={onViewAssessment} disabled={loadingAssessment}>
+              {loadingAssessment ? <Loader2 className="h-4 w-4 animate-spin" /> : 'View Full Assessment'}
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Payment Method *</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="Online Payment">Online Payment (GCash, Maya, etc.)</SelectItem>
+                  <SelectItem value="Credit Card">Credit Card</SelectItem>
+                  <SelectItem value="Check">Check</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Reference Number *</Label>
+              <Input 
+                placeholder="Enter reference/transaction number" 
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Upload Proof of Payment *</Label>
+            <Input 
+              type="file" 
+              accept="image/*,.pdf" 
+              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+            />
+            <p className="text-xs text-slate-500 mt-1">Upload a screenshot or photo of your payment receipt (JPG, PNG, PDF)</p>
+          </div>
+          <Button 
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600"
+            onClick={handleSubmit}
+            disabled={loading || uploading || !paymentMethod || !referenceNumber}
+          >
+            {(loading || uploading) ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Submit Payment for Verification
+              </>
+            )}
+          </Button>
+          <p className="text-xs text-slate-500 text-center">
+            Your payment will be reviewed by the cashier. You will be notified once verified.
+          </p>
+        </div>
+      </Card>
+    );
   };
 
   const renderDashboardContent = () => {
@@ -552,55 +786,13 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       )}
 
       {enrollmentStatus === 'For Payment' && currentEnrollment && (
-        <Card className="border-0 shadow-lg p-6">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="h-8 w-8 text-purple-600" />
-            </div>
-            <h3 className="text-xl mb-2">Proceed to Payment</h3>
-            <p className="text-slate-600 mb-4">Your subjects have been approved. Total amount: ₱{currentEnrollment.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}</p>
-            <div className="mb-4">
-              <Button variant="outline" onClick={() => openAssessmentModal(currentEnrollment.id)} disabled={loadingAssessment}>
-                {loadingAssessment ? <Loader2 className="h-4 w-4 animate-spin" /> : 'View Assessment'}
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Payment Method</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GCash">GCash</SelectItem>
-                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Online Payment">Online Payment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Reference Number</Label>
-                <Input placeholder="Enter reference number" />
-              </div>
-            </div>
-            <div>
-              <Label>Upload Receipt (Optional)</Label>
-              <Input type="file" accept="image/*,.pdf" />
-            </div>
-            <Button 
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600"
-              onClick={() => {
-                // This would be connected to handleSubmitPayment
-                alert('Payment submission will be implemented');
-              }}
-            >
-              Submit Payment
-            </Button>
-          </div>
-        </Card>
+        <PaymentForm 
+          enrollment={currentEnrollment}
+          onViewAssessment={() => openAssessmentModal(currentEnrollment.id)}
+          loadingAssessment={loadingAssessment}
+          onSubmit={handleSubmitPayment}
+          loading={loading}
+        />
       )}
 
       {enrollmentStatus === 'Enrolled' && (
@@ -627,31 +819,40 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
 
       {!['Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled'].includes(enrollmentStatus) && (
         <Card className="border-0 shadow-lg p-6">
-          {/* Student Type Selection */}
+          {/* Student Type Display (auto-set by admin) */}
           {enrollmentStep === 1 && (
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="student-type">Select Student Type</Label>
-                <Select value={studentType} onValueChange={setStudentType}>
-                  <SelectTrigger id="student-type" className="mt-2">
-                    <SelectValue placeholder="Choose student type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">New Student</SelectItem>
-                    <SelectItem value="transferee">Transferee</SelectItem>
-                    <SelectItem value="returning">Returning Student</SelectItem>
-                    <SelectItem value="continuing">Continuing Student</SelectItem>
-                    <SelectItem value="scholar">Scholar Student</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {studentProfile?.student_type ? (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertTitle className="text-blue-900">Student Type: {studentProfile.student_type}</AlertTitle>
+                  <AlertDescription className="text-blue-700">
+                    Your enrollment type has been set by the administrator. Click Continue to proceed.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div>
+                  <Label htmlFor="student-type">Select Student Type</Label>
+                  <Select value={studentType} onValueChange={setStudentType}>
+                    <SelectTrigger id="student-type" className="mt-2">
+                      <SelectValue placeholder="Choose student type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New Student</SelectItem>
+                      <SelectItem value="transferee">Transferee</SelectItem>
+                      <SelectItem value="returning">Returning Student</SelectItem>
+                      <SelectItem value="continuing">Continuing Student</SelectItem>
+                      <SelectItem value="scholar">Scholar Student</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {studentType && (
                 <Button 
                   onClick={() => setEnrollmentStep(2)}
                   className="bg-gradient-to-r from-blue-600 to-indigo-600"
                 >
-                  Next
+                  {studentProfile?.student_type ? 'Continue' : 'Next'}
                 </Button>
               )}
             </div>
@@ -1474,6 +1675,85 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             {activeSection === 'Subjects' && renderSubjectsContent()}
             {activeSection === 'My Schedule' && renderScheduleContent()}
             {activeSection === 'My Profile' && renderProfileContent()}
+            {/* Notifications Modal */}
+            <Dialog open={showNotification} onOpenChange={setShowNotification}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Notifications</DialogTitle>
+                  <DialogDescription>Recent updates about your enrollment and payments.</DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 space-y-3">
+                  <div className="p-3 border rounded-lg">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium">Enrollment Approved</p>
+                        <p className="text-sm text-slate-600">Your subject selection has been approved. Please proceed to payment.</p>
+                      </div>
+                      <div className="text-right">
+                        <Button size="sm" onClick={() => { openPaymentsModal(); setShowNotification(false); }}>View Payments</Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 border rounded-lg">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium">Enrollment Form Ready</p>
+                        <p className="text-sm text-slate-600">Your enrollment form is available for download.</p>
+                      </div>
+                      <div className="text-right">
+                        <Button size="sm" variant="outline" onClick={() => { handleDownloadEnrollmentForm(); setShowNotification(false); }}>Download</Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-4">
+                  <Button variant="outline" onClick={() => setShowNotification(false)}>Close</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Payments Modal */}
+            <Dialog open={paymentsOpen} onOpenChange={setPaymentsOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Tuition Assessment & Payments</DialogTitle>
+                  <DialogDescription>Review your tuition assessment and payment history.</DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium">Assessment</h4>
+                    <div className="mt-2 text-sm">
+                      <div className="flex justify-between"><div>Total</div><div>₱{(assessmentData?.total || assessmentData?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
+                      <div className="flex justify-between"><div>Due</div><div>₱{(assessmentData?.due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium">Payment History</h4>
+                    {paymentHistory.length === 0 ? (
+                      <p className="text-sm text-slate-500 mt-2">No payments found</p>
+                    ) : (
+                      <div className="mt-2 space-y-2 text-sm">
+                        {paymentHistory.map((p: any) => (
+                          <div key={p.id} className="flex justify-between border rounded p-2">
+                            <div>
+                              <div className="font-medium">{p.method || p.reference || 'Payment'}</div>
+                              <div className="text-xs text-slate-500">{new Date(p.ts).toLocaleString()}</div>
+                            </div>
+                            <div className="font-medium">₱{(p.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end mt-6">
+                  <Button variant="outline" onClick={() => setPaymentsOpen(false)}>Close</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {/* Assessment Modal */}
             <Dialog open={assessmentOpen} onOpenChange={setAssessmentOpen}>
               <DialogContent className="max-w-2xl">
