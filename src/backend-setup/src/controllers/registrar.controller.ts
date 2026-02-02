@@ -252,12 +252,144 @@ export const resolveClearance = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Get enrollments pending registrar assessment (after subject selection)
+export const getPendingSubjectAssessments = async (req: AuthRequest, res: Response) => {
+  try {
+    const enrollments = await query(
+      `SELECT e.*, 
+        s.student_id, s.first_name || ' ' || s.last_name as student_name, s.course, s.year_level,
+        (SELECT COUNT(*) FROM enrollment_subjects es WHERE es.enrollment_id = e.id) as subject_count
+       FROM enrollments e
+       JOIN students s ON e.student_id = s.id
+       WHERE e.status = 'For Registrar Assessment'
+       ORDER BY e.updated_at DESC`
+    );
+
+    res.json({ success: true, data: enrollments });
+  } catch (error) {
+    console.error('Get pending subject assessments error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Get enrollment details with subjects for assessment review
+export const getEnrollmentForAssessment = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const enrollments = await query(
+      `SELECT e.*, 
+        s.student_id, s.first_name || ' ' || s.last_name as student_name, s.course, s.year_level
+       FROM enrollments e
+       JOIN students s ON e.student_id = s.id
+       WHERE e.id = ?`,
+      [id]
+    );
+
+    if (enrollments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    }
+
+    // Get enrolled subjects
+    const subjects = await query(
+      `SELECT es.*, sub.subject_code, sub.subject_name, sub.units
+       FROM enrollment_subjects es
+       JOIN subjects sub ON es.subject_id = sub.id
+       WHERE es.enrollment_id = ?`,
+      [id]
+    );
+
+    res.json({ 
+      success: true, 
+      data: { 
+        enrollment: enrollments[0], 
+        subjects 
+      } 
+    });
+  } catch (error) {
+    console.error('Get enrollment for assessment error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Approve subject assessment and forward to dean
+export const approveSubjectAssessment = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { tuition, registration, library, lab, id_fee, others, remarks } = req.body;
+    const userId = req.user?.id;
+
+    // Check if enrollment exists and is in correct status
+    const enrollments = await query('SELECT * FROM enrollments WHERE id = ?', [id]);
+
+    if (enrollments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Enrollment not found' });
+    }
+
+    if (enrollments[0].status !== 'For Registrar Assessment') {
+      return res.status(400).json({ success: false, message: 'Enrollment is not pending registrar assessment' });
+    }
+
+    // Calculate total based on units and fees
+    const subjTotals = await query(
+      `SELECT SUM(s.units) as total_units
+       FROM enrollment_subjects es
+       JOIN subjects s ON es.subject_id = s.id
+       WHERE es.enrollment_id = ?`,
+      [id]
+    );
+    const totalUnits = subjTotals[0]?.total_units || 0;
+    
+    // Calculate total amount
+    const tuitionFee = tuition || (totalUnits * 700); // Default 700 per unit
+    const regFee = registration || 0;
+    const libFee = library || 0;
+    const labFee = lab || 0;
+    const idFee = id_fee || 0;
+    const otherFees = others || 0;
+    const totalAmount = tuitionFee + regFee + libFee + labFee + idFee + otherFees;
+
+    // Update enrollment with assessment and forward to dean
+    await run(
+      `UPDATE enrollments SET 
+        status = 'For Dean Approval',
+        tuition = ?,
+        registration = ?,
+        library = ?,
+        lab = ?,
+        id_fee = ?,
+        others = ?,
+        total_amount = ?,
+        assessed_by = ?,
+        assessed_at = datetime('now'),
+        remarks = ?,
+        updated_at = datetime('now')
+       WHERE id = ?`,
+      [tuitionFee, regFee, libFee, labFee, idFee, otherFees, totalAmount, userId, remarks || null, id]
+    );
+
+    // Log activity
+    await run(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, description) VALUES (?, ?, ?, ?, ?)',
+      [userId, 'APPROVE_SUBJECT_ASSESSMENT', 'enrollment', id, `Subject assessment approved, total: ₱${totalAmount}`]
+    );
+
+    res.json({
+      success: true,
+      message: 'Subject assessment approved. Forwarded to Dean for approval.',
+      data: { total_amount: totalAmount }
+    });
+  } catch (error) {
+    console.error('Approve subject assessment error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 // Get registrar dashboard stats
 export const getRegistrarDashboardStats = async (req: AuthRequest, res: Response) => {
   try {
     // Total student records
     const totalRecords = await query('SELECT COUNT(*) as count FROM students WHERE status = ?', ['Active']);
-
     // Pending grades (enrollment_subjects without grades)
     const pendingGrades = await query(
       `SELECT COUNT(*) as count 

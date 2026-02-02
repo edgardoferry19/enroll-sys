@@ -43,9 +43,22 @@ interface RegistrarDashboardProps {
 export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps) {
   const [activeSection, setActiveSection] = useState('Dashboard');
   const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
+  const [pendingSubjectAssessments, setPendingSubjectAssessments] = useState<any[]>([]);
   const [assessDialogOpen, setAssessDialogOpen] = useState(false);
+  const [subjectAssessDialogOpen, setSubjectAssessDialogOpen] = useState(false);
   const [selectedEnrollmentForAssess, setSelectedEnrollmentForAssess] = useState<any>(null);
+  const [selectedSubjectAssessment, setSelectedSubjectAssessment] = useState<any>(null);
+  const [subjectAssessmentDetails, setSubjectAssessmentDetails] = useState<any>(null);
   const [assessmentForm, setAssessmentForm] = useState({
+    tuition: 0,
+    registration: 0,
+    library: 0,
+    lab: 0,
+    id_fee: 0,
+    others: 0,
+    remarks: ''
+  });
+  const [subjectAssessmentForm, setSubjectAssessmentForm] = useState({
     tuition: 0,
     registration: 0,
     library: 0,
@@ -111,6 +124,12 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
             const list = pendingResp.data || pendingResp || [];
             setPendingEnrollments(list);
           }
+      } else if (activeSection === 'Subject Assessments') {
+        // Fetch enrollments pending registrar subject assessment
+        const resp = await registrarService.getPendingSubjectAssessments();
+        if (resp.success) {
+          setPendingSubjectAssessments(resp.data || []);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch data');
@@ -133,8 +152,48 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
 
   const openAssessDialog = (enrollment: any) => {
     setSelectedEnrollmentForAssess(enrollment);
-    setAssessmentForm({ tuition: 0, registration: 0, library: 0, lab: 0, id_fee: 0, others: 0, remarks: '' });
+    setAssessmentForm({ tuition: 14000, registration: 1500, library: 500, lab: 2000, id_fee: 200, others: 300, remarks: '' });
     setAssessDialogOpen(true);
+  };
+
+  const openSubjectAssessDialog = async (enrollment: any) => {
+    setSelectedSubjectAssessment(enrollment);
+    try {
+      const resp = await registrarService.getEnrollmentAssessmentDetails(enrollment.id);
+      if (resp.success) {
+        setSubjectAssessmentDetails(resp.data);
+        // Pre-calculate tuition based on units (700 per unit)
+        const totalUnits = resp.data.subjects?.reduce((sum: number, s: any) => sum + (s.units || 0), 0) || 0;
+        setSubjectAssessmentForm({
+          tuition: 14000,
+          registration: 1500,
+          library: 500,
+          lab: 2000,
+          id_fee: 200,
+          others: 300,
+          remarks: ''
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch assessment details:', err);
+    }
+    setSubjectAssessDialogOpen(true);
+  };
+
+  const handleApproveSubjectAssessment = async () => {
+    if (!selectedSubjectAssessment) return;
+    try {
+      setLoading(true);
+      await registrarService.approveSubjectAssessment(selectedSubjectAssessment.id, subjectAssessmentForm);
+      setSubjectAssessDialogOpen(false);
+      alert('Subject assessment approved. Forwarded to Dean for approval.');
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Failed to approve subject assessment');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAssessEnrollment = async () => {
@@ -631,6 +690,60 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
     );
   };
 
+  const renderSubjectAssessmentsContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Card className="border-0 shadow-lg">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 rounded-t-lg">
+            <h3 className="text-white font-medium">Pending Subject Assessments</h3>
+            <p className="text-blue-100 text-sm">Review subject selection and set fees before forwarding to Dean</p>
+          </div>
+          <div className="p-6">
+            {pendingSubjectAssessments.length === 0 ? (
+              <p className="text-center text-slate-500 py-8">No enrollments pending subject assessment</p>
+            ) : (
+              <div className="space-y-4">
+                {pendingSubjectAssessments.map((e) => (
+                  <div key={e.id} className="p-4 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-slate-900">{e.student_name}</h4>
+                        <p className="text-sm text-slate-500">
+                          {e.student_id} • {e.course} • Year {e.year_level}
+                        </p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {e.school_year} • {e.semester} Semester
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          Subjects: {e.subject_count} • Units: {e.total_units} • Amount: ₱{e.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">Submitted {formatTimeAgo(e.updated_at)}</p>
+                      </div>
+                      <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">For Registrar Assessment</Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600" onClick={() => openSubjectAssessDialog(e)}>
+                        Review & Assess
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
   const renderPendingEnrollmentsContent = () => {
     if (loading) {
       return (
@@ -679,6 +792,7 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
+    { name: 'Subject Assessments', icon: ClipboardCheck },
     { name: 'Student Records', icon: Users },
     { name: 'Grades Management', icon: ClipboardCheck },
     { name: 'COR Management', icon: Award },
@@ -751,6 +865,7 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
           {/* Content Area */}
           <div className="col-span-9">
             {activeSection === 'Dashboard' && renderDashboardContent()}
+            {activeSection === 'Subject Assessments' && renderSubjectAssessmentsContent()}
             {activeSection === 'Student Records' && renderStudentRecordsContent()}
             {activeSection === 'Grades Management' && renderGradesManagementContent()}
             {activeSection === 'COR Management' && renderCORManagementContent()}
@@ -803,6 +918,121 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
               <Button onClick={handleAssessEnrollment}>Assess</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Subject Assessment Dialog */}
+      <Dialog open={subjectAssessDialogOpen} onOpenChange={setSubjectAssessDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Subject Assessment Review</DialogTitle>
+            <DialogDescription>Review subjects and set assessment fees before forwarding to Dean</DialogDescription>
+          </DialogHeader>
+          {selectedSubjectAssessment && (
+            <div className="space-y-4">
+              {/* Student Info */}
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="font-medium">{selectedSubjectAssessment.student_name}</p>
+                <p className="text-sm text-slate-500">
+                  {selectedSubjectAssessment.student_id} • {selectedSubjectAssessment.course} • Year {selectedSubjectAssessment.year_level}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {selectedSubjectAssessment.school_year} • {selectedSubjectAssessment.semester} Semester
+                </p>
+              </div>
+
+              {/* Subjects List */}
+              {subjectAssessmentDetails?.subjects && (
+                <div>
+                  <h4 className="font-medium mb-2">Selected Subjects</h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Code</th>
+                          <th className="px-3 py-2 text-left">Subject</th>
+                          <th className="px-3 py-2 text-center">Units</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {subjectAssessmentDetails.subjects.map((s: any) => (
+                          <tr key={s.id} className="border-t">
+                            <td className="px-3 py-2">{s.subject_code}</td>
+                            <td className="px-3 py-2">{s.subject_name}</td>
+                            <td className="px-3 py-2 text-center">{s.units}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-slate-50 font-medium">
+                        <tr className="border-t">
+                          <td className="px-3 py-2" colSpan={2}>Total Units</td>
+                          <td className="px-3 py-2 text-center">
+                            {subjectAssessmentDetails.subjects.reduce((sum: number, s: any) => sum + (s.units || 0), 0)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Fee Breakdown */}
+              <div>
+                <h4 className="font-medium mb-2">Assessment Fees</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Tuition (₱700/unit)</Label>
+                    <Input type="number" value={subjectAssessmentForm.tuition} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, tuition: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <Label>Registration</Label>
+                    <Input type="number" value={subjectAssessmentForm.registration} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, registration: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <Label>Library</Label>
+                    <Input type="number" value={subjectAssessmentForm.library} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, library: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <Label>Lab</Label>
+                    <Input type="number" value={subjectAssessmentForm.lab} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, lab: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <Label>ID Fee</Label>
+                    <Input type="number" value={subjectAssessmentForm.id_fee} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, id_fee: Number(e.target.value)})} />
+                  </div>
+                  <div>
+                    <Label>Others</Label>
+                    <Input type="number" value={subjectAssessmentForm.others} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, others: Number(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                  <p className="font-medium text-blue-900">
+                    Total Amount: ₱{(
+                      subjectAssessmentForm.tuition +
+                      subjectAssessmentForm.registration +
+                      subjectAssessmentForm.library +
+                      subjectAssessmentForm.lab +
+                      subjectAssessmentForm.id_fee +
+                      subjectAssessmentForm.others
+                    ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label>Remarks</Label>
+                <Input value={subjectAssessmentForm.remarks} onChange={(e) => setSubjectAssessmentForm({...subjectAssessmentForm, remarks: e.target.value})} placeholder="Optional remarks..." />
+              </div>
+
+              <div className="flex gap-2 justify-end mt-4">
+                <Button variant="outline" onClick={() => setSubjectAssessDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleApproveSubjectAssessment} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Approve & Forward to Dean
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

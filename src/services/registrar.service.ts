@@ -95,6 +95,45 @@ class RegistrarService {
     }
   }
 
+  // Subject Assessment (new step after subject selection)
+  async getPendingSubjectAssessments(): Promise<any> {
+    try {
+      const response = await api.get('/registrar/enrollments/pending-assessment');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async getEnrollmentAssessmentDetails(enrollmentId: number): Promise<any> {
+    try {
+      const response = await api.get(`/registrar/enrollments/${enrollmentId}/assessment-details`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async approveSubjectAssessment(
+    enrollmentId: number,
+    assessmentData: {
+      tuition?: number;
+      registration?: number;
+      library?: number;
+      lab?: number;
+      id_fee?: number;
+      others?: number;
+      remarks?: string;
+    }
+  ): Promise<any> {
+    try {
+      const response = await api.put(`/registrar/enrollments/${enrollmentId}/approve-assessment`, assessmentData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   /**
    * Assess enrollment and set fees
    */

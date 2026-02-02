@@ -6,7 +6,10 @@ import {
   getAllClearances,
   createClearance,
   resolveClearance,
-  getRegistrarDashboardStats
+  getRegistrarDashboardStats,
+  getPendingSubjectAssessments,
+  getEnrollmentForAssessment,
+  approveSubjectAssessment
 } from '../controllers/registrar.controller';
 import { assessEnrollment, verifyPayment } from '../controllers/enrollment.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
@@ -15,6 +18,11 @@ const router = express.Router();
 
 // Dashboard
 router.get('/dashboard/stats', authenticate, authorize('registrar', 'superadmin'), getRegistrarDashboardStats);
+
+// Subject Assessment (new step after subject selection, before dean approval)
+router.get('/enrollments/pending-assessment', authenticate, authorize('registrar', 'superadmin'), getPendingSubjectAssessments);
+router.get('/enrollments/:id/assessment-details', authenticate, authorize('registrar', 'superadmin'), getEnrollmentForAssessment);
+router.put('/enrollments/:id/approve-assessment', authenticate, authorize('registrar', 'superadmin'), approveSubjectAssessment);
 
 // Enrollment Assessment & Payment Verification
 router.put('/enrollments/:id/assess', authenticate, authorize('registrar', 'superadmin'), assessEnrollment);

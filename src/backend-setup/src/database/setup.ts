@@ -68,7 +68,7 @@ async function setupDatabase() {
         student_id INTEGER NOT NULL,
         school_year TEXT NOT NULL,
         semester TEXT NOT NULL CHECK(semester IN ('1st', '2nd', 'Summer')),
-        status TEXT DEFAULT 'Pending Assessment' CHECK(status IN ('Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled', 'Rejected')),
+        status TEXT DEFAULT 'Pending Assessment' CHECK(status IN ('Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Registrar Assessment', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled', 'Rejected')),
         enrollment_date TEXT DEFAULT (datetime('now')),
         assessed_by INTEGER,
         assessed_at TEXT,

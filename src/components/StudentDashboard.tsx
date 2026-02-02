@@ -243,7 +243,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       setLoading(true);
       await enrollmentService.submitSubjects(currentEnrollment.id);
       await fetchStudentData();
-      alert('Subjects submitted for Dean approval');
+      alert('Subjects submitted for Registrar assessment');
     } catch (error: any) {
       alert(error.message || 'Failed to submit subjects');
     } finally {
@@ -666,12 +666,22 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
           </Alert>
         )}
 
+        {enrollmentStatus === 'For Registrar Assessment' && (
+          <Alert className="bg-indigo-50 border-indigo-200">
+            <Clock className="h-4 w-4 text-indigo-600" />
+            <AlertTitle className="text-indigo-900">Awaiting Registrar Assessment</AlertTitle>
+            <AlertDescription className="text-indigo-700">
+              Your subject selection has been submitted. The Registrar is reviewing your enrollment fees.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {enrollmentStatus === 'For Dean Approval' && (
           <Alert className="bg-yellow-50 border-yellow-200">
             <Clock className="h-4 w-4 text-yellow-600" />
             <AlertTitle className="text-yellow-900">Awaiting Dean Approval</AlertTitle>
             <AlertDescription className="text-yellow-700">
-              Your subject selection has been submitted and is awaiting Dean approval.
+              Your enrollment fees have been assessed. Awaiting Dean approval.
             </AlertDescription>
           </Alert>
         )}
@@ -756,7 +766,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
 
   const renderEnrollmentContent = () => (
     <div>
-      {['Pending Assessment', 'For Admin Approval', 'For Dean Approval', 'Payment Verification'].includes(enrollmentStatus) && (
+      {['Pending Assessment', 'For Admin Approval', 'For Registrar Assessment', 'For Dean Approval', 'Payment Verification'].includes(enrollmentStatus) && (
         <Card className="border-0 shadow-lg p-8 text-center">
           <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
             <Clock className="h-8 w-8 text-orange-600" />
@@ -817,7 +827,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
         </Card>
       )}
 
-      {!['Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled'].includes(enrollmentStatus) && (
+      {!['Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Registrar Assessment', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled'].includes(enrollmentStatus) && (
         <Card className="border-0 shadow-lg p-6">
           {/* Student Type Display (auto-set by admin) */}
           {enrollmentStep === 1 && (
@@ -1202,7 +1212,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                     Submitting...
                   </>
                 ) : (
-                  'Submit Subjects for Dean Approval'
+                  'Submit Subjects for Assessment'
                 )}
               </Button>
             </div>

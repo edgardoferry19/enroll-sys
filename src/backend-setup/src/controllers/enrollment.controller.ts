@@ -596,7 +596,7 @@ export const submitSubjects = async (req: AuthRequest, res: Response) => {
 
     await run(
       `UPDATE enrollments SET 
-        status = 'For Dean Approval',
+        status = 'For Registrar Assessment',
         total_units = ?,
         total_amount = ?,
         updated_at = datetime('now')
@@ -612,7 +612,7 @@ export const submitSubjects = async (req: AuthRequest, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Subjects submitted for Dean approval',
+      message: 'Subjects submitted for Registrar assessment',
       data: {
         total_units: totalUnits,
         subject_fees: subjectFees,
