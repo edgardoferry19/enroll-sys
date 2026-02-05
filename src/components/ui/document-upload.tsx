@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from './button';
-import { Upload, X, File } from 'lucide-react';
+import { Upload, X, File, Download } from 'lucide-react';
 import { Label } from './label';
 
 interface DocumentUploadProps {
@@ -10,6 +10,8 @@ interface DocumentUploadProps {
   onFileSelect: (docType: string, file: File) => void;
   selectedFile?: File;
   acceptedFormats?: string;
+  downloadUrl?: string;
+  downloadLabel?: string;
 }
 
 export function DocumentUpload({
@@ -18,7 +20,9 @@ export function DocumentUpload({
   docType,
   onFileSelect,
   selectedFile,
-  acceptedFormats = '.pdf,.doc,.docx,.jpg,.jpeg,.png'
+  acceptedFormats = '.pdf,.doc,.docx,.jpg,.jpeg,.png',
+  downloadUrl,
+  downloadLabel
 }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
@@ -70,15 +74,28 @@ export function DocumentUpload({
           <Label className="block mb-1">{label}</Label>
           <p className="text-xs text-slate-500">{description}</p>
         </div>
-        {selectedFile && (
-          <button
-            onClick={() => onFileSelect(docType, null as any)}
-            className="text-red-500 hover:text-red-700 p-1"
-            title="Remove file"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {downloadUrl && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 px-2"
+              onClick={() => window.open(downloadUrl, '_blank')}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              {downloadLabel || 'Download'}
+            </Button>
+          )}
+          {selectedFile && (
+            <button
+              onClick={() => onFileSelect(docType, null as any)}
+              className="text-red-500 hover:text-red-700 p-1"
+              title="Remove file"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {!selectedFile ? (

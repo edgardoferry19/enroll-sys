@@ -207,6 +207,33 @@ export default function SuperadminDashboard({ onLogout }: SuperadminDashboardPro
     },
   ] : [];
 
+  const analyticsHighlights = dashboardStats ? [
+    {
+      label: 'Total Collections',
+      value: `₱${Number(dashboardStats.revenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      note: 'Cashier',
+      color: 'text-green-700'
+    },
+    {
+      label: 'Outstanding Balances',
+      value: `₱${Number(dashboardStats.outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      note: 'Cashier',
+      color: 'text-orange-700'
+    },
+    {
+      label: 'Pending Enrollments',
+      value: dashboardStats.pipelinePending?.toString() || '0',
+      note: 'Registrar',
+      color: 'text-amber-700'
+    },
+    {
+      label: 'Dean Approvals',
+      value: dashboardStats.deanApprovals?.toString() || '0',
+      note: 'Academic Head',
+      color: 'text-blue-700'
+    }
+  ] : [];
+
   const renderDashboardContent = () => {
     if (loading) {
       return (
@@ -251,6 +278,27 @@ export default function SuperadminDashboard({ onLogout }: SuperadminDashboardPro
             );
           })}
         </div>
+
+        {/* Cross-role Analytics */}
+        {analyticsHighlights.length > 0 && (
+          <Card className="border-0 shadow-lg mb-8">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900">Automated Analytics</h3>
+                <p className="text-sm text-slate-500">Pulls from cashier, registrar, and dean pipelines.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4">
+              {analyticsHighlights.map((item) => (
+                <div key={item.label} className="p-4 rounded-xl bg-slate-50 border">
+                  <p className="text-xs uppercase text-slate-500">{item.note}</p>
+                  <p className={`text-xl font-semibold ${item.color}`}>{item.value}</p>
+                  <p className="text-sm text-slate-700 mt-1">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* System Overview */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -318,6 +366,36 @@ export default function SuperadminDashboard({ onLogout }: SuperadminDashboardPro
             </div>
           </Card>
         </div>
+
+        {/* Activity Log */}
+        {dashboardStats?.activityLog && (
+          <Card className="border-0 shadow-lg mt-6">
+            <div className="p-4 border-b">
+              <h3 className="font-semibold text-slate-900">System Activity Logs</h3>
+              <p className="text-sm text-slate-500">Latest 10 actions across all roles.</p>
+            </div>
+            <div className="p-4">
+              {dashboardStats.activityLog.length === 0 ? (
+                <p className="text-sm text-slate-500">No activity yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {dashboardStats.activityLog.map((log: any) => (
+                    <div key={log.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                      <div>
+                        <p className="text-sm text-slate-900">{log.action}</p>
+                        <p className="text-xs text-slate-500">{log.description || '—'}</p>
+                      </div>
+                      <div className="text-right text-xs text-slate-500">
+                        <p>{log.username || 'system'}</p>
+                        <p>{new Date(log.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
       </>
     );
   };

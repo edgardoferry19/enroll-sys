@@ -3,6 +3,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
+import { Input } from './ui/input';
 import { cashierService } from '../services/cashier.service';
 import { 
   Loader2, 
@@ -36,26 +37,39 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
   const [activeSection, setActiveSection] = useState('Dashboard');
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [stats, setStats] = useState({ pending: 0, completed: 0, rejected: 0, totalAmount: 0 });
+  const [analytics, setAnalytics] = useState({ totalCollections: 0, outstandingBalances: 0, pendingCount: 0 });
+  const [filters, setFilters] = useState({ status: 'Pending', search: '', school_year: '', semester: '' });
   const [expandedTx, setExpandedTx] = useState<number | null>(null);
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const loadPending = async () => {
+  const loadTransactions = async () => {
     try {
       setLoading(true);
       setError('');
-      const resp = await cashierService.listPending();
-      const txList = resp?.data || [];
+      const resp = await cashierService.listTransactions(filters);
+      const txList = resp?.data || resp || [];
       setTransactions(txList);
-      
-      // Calculate stats
+      setAllTransactions(txList);
+
+      // Calculate stats from full list
       const pending = txList.filter((t: any) => t.status === 'Pending').length;
       const completed = txList.filter((t: any) => t.status === 'Completed').length;
       const rejected = txList.filter((t: any) => t.status === 'Rejected').length;
       const totalAmount = txList.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-      setStats({ pending: pending || txList.length, completed, rejected, totalAmount });
+      setStats({ pending, completed, rejected, totalAmount });
+
+      // Pull aggregated analytics
+      const snap = await cashierService.getAnalyticsSnapshot();
+      const data = snap?.data || snap || {};
+      setAnalytics({
+        totalCollections: data.totalCollections || 0,
+        outstandingBalances: data.outstandingBalances || 0,
+        pendingCount: data.pendingCount || pending
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to load transactions');
     } finally {
@@ -63,13 +77,13 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
     }
   };
 
-  useEffect(() => { loadPending(); }, []);
+  useEffect(() => { loadTransactions(); }, [filters]);
 
   const handleProcess = async (txId: number, action: 'complete' | 'reject') => {
     try {
       setLoading(true);
       await cashierService.process(txId, action, action === 'reject' ? 'Rejected by cashier' : 'Processed by cashier');
-      await loadPending();
+      await loadTransactions();
     } catch (err: any) {
       setError(err.message || 'Failed to process transaction');
       setLoading(false);
@@ -113,16 +127,20 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
     setDetailsOpen(true);
   };
 
+  const updateFilter = (key: keyof typeof filters, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
-    { name: 'Pending Transactions', icon: Clock },
+    { name: 'Transactions', icon: Clock },
   ];
 
   const statCards = [
-    { label: 'Pending', value: stats.pending.toString(), icon: Clock, color: 'from-orange-500 to-orange-600' },
-    { label: 'Completed', value: stats.completed.toString(), icon: CheckCircle, color: 'from-green-500 to-green-600' },
-    { label: 'Rejected', value: stats.rejected.toString(), icon: XCircle, color: 'from-red-500 to-red-600' },
-    { label: 'Total Amount', value: `₱${stats.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: DollarSign, color: 'from-purple-500 to-purple-600' },
+    { label: 'Total Collections', value: `₱${analytics.totalCollections.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: DollarSign, color: 'from-green-500 to-green-600' },
+    { label: 'Outstanding Balances', value: `₱${analytics.outstandingBalances.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: AlertCircle, color: 'from-orange-500 to-orange-600' },
+    { label: 'Pending Transactions', value: (analytics.pendingCount || stats.pending).toString(), icon: Clock, color: 'from-amber-500 to-amber-600' },
+    { label: 'Logged Transactions', value: allTransactions.length.toString(), icon: FileText, color: 'from-purple-500 to-purple-600' },
   ];
 
   const renderDashboardContent = () => {
@@ -207,9 +225,45 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
     return (
       <Card className="border-0 shadow-lg">
         <div className="p-6">
-          <h3 className="text-lg font-semibold mb-4">All Pending Transactions</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Transactions</h3>
+          </div>
+
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <Input
+              placeholder="Search student or reference"
+              value={filters.search}
+              onChange={(e) => updateFilter('search', e.target.value)}
+            />
+            <select
+              className="border rounded-md px-3 py-2 text-sm"
+              value={filters.status}
+              onChange={(e) => updateFilter('status', e.target.value)}
+            >
+              <option value="Pending">Pending</option>
+              <option value="Completed">Completed</option>
+              <option value="Rejected">Rejected</option>
+              <option value="">All</option>
+            </select>
+            <Input
+              placeholder="School Year (e.g., 2024-2025)"
+              value={filters.school_year}
+              onChange={(e) => updateFilter('school_year', e.target.value)}
+            />
+            <select
+              className="border rounded-md px-3 py-2 text-sm"
+              value={filters.semester}
+              onChange={(e) => updateFilter('semester', e.target.value)}
+            >
+              <option value="">All Semesters</option>
+              <option value="1st">1st</option>
+              <option value="2nd">2nd</option>
+              <option value="Summer">Summer</option>
+            </select>
+          </div>
           {transactions.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-8">No pending transactions</p>
+            <p className="text-sm text-slate-500 text-center py-8">No transactions found</p>
           ) : (
             <div className="space-y-4">
               {transactions.map((tx) => (
@@ -233,6 +287,9 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
                           </div>
                           <p className="text-sm text-slate-500">
                             {tx.course || 'N/A'} • Year {tx.year_level || 'N/A'} • {tx.school_year} {tx.semester} Sem
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            Outstanding: ₱{(tx.outstanding_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </p>
                         </div>
                       </div>
@@ -464,7 +521,7 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
           {/* Content Area */}
           <div className="col-span-9">
             {activeSection === 'Dashboard' && renderDashboardContent()}
-            {activeSection === 'Pending Transactions' && renderTransactionsContent()}
+            {activeSection === 'Transactions' && renderTransactionsContent()}
           </div>
         </div>
       </div>

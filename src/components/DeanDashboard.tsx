@@ -52,6 +52,7 @@ import { facultyService } from '../services/faculty.service';
 import { subjectService } from '../services/subject.service';
 import CoursesManagement from './CoursesManagement';
 import { gradesService } from '../services/grades.service';
+import analyticsService from '../services/analytics.service';
 
 interface DeanDashboardProps {
   onLogout: () => void;
@@ -84,6 +85,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
   const [selectedProgram, setSelectedProgram] = useState<any>(null);
   const [forDeanEnrollments, setForDeanEnrollments] = useState<any[]>([]);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [analyticsSummary, setAnalyticsSummary] = useState<any>(null);
 
   const [newFacultyForm, setNewFacultyForm] = useState({
     faculty_id: '',
@@ -147,12 +149,16 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
         if (statsResponse.success) {
           setDashboardStats(statsResponse.data);
         }
+        const deanAnalytics = await analyticsService.fetchDeanSummary();
+        if (deanAnalytics.success) {
+          setAnalyticsSummary(deanAnalytics.data);
+        }
         // Fetch recent faculty for dashboard
         const facultyResponse = await facultyService.getAllFaculty({ status: 'Active' });
         if (facultyResponse.success) {
           setFacultyMembers(facultyResponse.data?.slice(0, 5) || []);
         }
-      } else if (activeSection === 'Faculty Management') {
+      } else if (activeSection === 'Teacher Management') {
         const facultyResponse = await facultyService.getAllFaculty();
         if (facultyResponse.success) {
           setFacultyMembers(facultyResponse.data || []);
@@ -363,7 +369,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
 
   const stats = dashboardStats ? [
     { 
-      label: 'Total Faculty', 
+      label: 'Total Teachers', 
       value: dashboardStats.totalFaculty?.toString() || '0', 
       icon: Users, 
       color: 'from-blue-500 to-blue-600',
@@ -439,10 +445,10 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
 
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Faculty Overview */}
+          {/* Teacher Overview */}
           <Card className="border-0 shadow-lg overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-              <h3 className="text-white">Faculty Members</h3>
+              <h3 className="text-white">Teachers</h3>
             </div>
             <ScrollArea className="h-[400px]">
               <div className="p-4">
@@ -503,6 +509,53 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
             </ScrollArea>
           </Card>
         </div>
+
+        {analyticsSummary && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <Card className="border-0 shadow-lg">
+              <div className="p-6">
+                <h4 className="text-slate-900 mb-2">Subject Demand (Top 10)</h4>
+                <p className="text-sm text-slate-600 mb-4">Most enrolled subjects to help balance teaching loads.</p>
+                <div className="space-y-2">
+                  {(analyticsSummary.subjectDemand || []).map((row: any) => (
+                    <div key={row.subject_code} className="flex items-center justify-between p-2 border rounded">
+                      <div>
+                        <p className="text-sm font-medium">{row.subject_code} - {row.subject_name}</p>
+                      </div>
+                      <Badge variant="secondary">{row.enrolled} enrolled</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+            <Card className="border-0 shadow-lg">
+              <div className="p-6 space-y-4">
+                <div>
+                  <h4 className="text-slate-900 mb-2">Students per Program</h4>
+                  <div className="space-y-2">
+                    {(analyticsSummary.perProgram || []).map((row: any) => (
+                      <div key={row.course || row.program} className="flex justify-between text-sm p-2 border rounded">
+                        <span>{row.course || row.program}</span>
+                        <span className="font-semibold">{row.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t pt-3">
+                  <h4 className="text-slate-900 mb-2">Students per Year Level</h4>
+                  <div className="space-y-2">
+                    {(analyticsSummary.perYear || []).map((row: any) => (
+                      <div key={row.yearLevel} className="flex justify-between text-sm p-2 border rounded">
+                        <span>Year {row.yearLevel}</span>
+                        <span className="font-semibold">{row.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
       </>
     );
   };
@@ -526,18 +579,9 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
             </div>
           </div>
         )}
-        <div className="flex justify-end mb-6">
-          <Button 
-            className="bg-gradient-to-r from-blue-600 to-indigo-600"
-            onClick={() => setAddFacultyOpen(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Faculty Member
-          </Button>
-        </div>
         <Card className="border-0 shadow-lg">
           <div className="p-6">
-            <p className="text-slate-600 mb-6">Manage faculty members and their assignments.</p>
+            <p className="text-slate-600 mb-6">Teacher roster pulled from Admin. Editing is limited to profile updates and reassignments.</p>
             {facultyMembers.length === 0 ? (
               <p className="text-center text-slate-500 py-8">No faculty members found</p>
             ) : (
@@ -575,18 +619,6 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
                         >
                           <Edit className="h-4 w-4 mr-1" />
                           Edit
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            setSelectedFaculty(faculty);
-                            setDeleteFacultyOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => handleOpenReassign(faculty.id)}>
                           Reassign
@@ -1071,7 +1103,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
         )}
 
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">Enrollments - For Dean Approval</h3>
+          <h3 className="text-lg font-medium">Enrollment Approval Requests</h3>
           <div>
             <Button variant="outline" onClick={fetchForDeanEnrollments}>Refresh</Button>
             <Button variant="outline" className="ml-2" onClick={() => setGradesDialogOpen(true)}>Grades Review</Button>
@@ -1274,11 +1306,11 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
-    { name: 'Faculty Management', icon: Users },
+    { name: 'Teacher Management', icon: Users },
     { name: 'Program Management', icon: BookOpen },
     { name: 'Courses', icon: BookOpen },
     { name: 'Curriculum', icon: FileText },
-    { name: 'For Dean Approval', icon: Award },
+    { name: 'Approval Requests', icon: Award },
   ];
 
   return (
@@ -1346,11 +1378,11 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
           {/* Content Area */}
           <div className="col-span-9">
             {activeSection === 'Dashboard' && renderDashboardContent()}
-            {activeSection === 'Faculty Management' && renderFacultyManagementContent()}
+            {activeSection === 'Teacher Management' && renderFacultyManagementContent()}
             {activeSection === 'Program Management' && renderProgramManagementContent()}
             {activeSection === 'Courses' && <CoursesManagement />}
             {activeSection === 'Curriculum' && renderCurriculumContent()}
-            {activeSection === 'For Dean Approval' && renderDeanApprovalsContent()}
+            {activeSection === 'Approval Requests' && renderDeanApprovalsContent()}
           </div>
         </div>
       </div>

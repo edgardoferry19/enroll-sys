@@ -4,7 +4,9 @@ import { AuthRequest } from '../middleware/auth.middleware';
 
 export const listPendingTransactions = async (req: AuthRequest, res: Response) => {
   try {
-    const txs = await query(
+    const { search, status, school_year, semester } = req.query;
+
+    let sql =
       `SELECT t.*, 
         e.student_id as enrollment_student_id, 
         e.school_year,
@@ -22,17 +24,72 @@ export const listPendingTransactions = async (req: AuthRequest, res: Response) =
         s.course,
         s.year_level,
         d.file_path as receipt_path,
-        d.file_name as receipt_filename
+        d.file_name as receipt_filename,
+        (e.total_amount - IFNULL((SELECT SUM(amount) FROM transactions WHERE enrollment_id = e.id AND status = 'Completed'),0)) as outstanding_balance
        FROM transactions t
        JOIN enrollments e ON t.enrollment_id = e.id
        JOIN students s ON e.student_id = s.id
        LEFT JOIN documents d ON d.enrollment_id = e.id AND d.document_type = 'payment_receipt'
-       WHERE t.status = 'Pending'
-       ORDER BY t.created_at DESC`
-    );
+       WHERE 1=1`;
+    const params: any[] = [];
+
+    sql += ' AND t.status = ?';
+    params.push(status || 'Pending');
+
+    if (search) {
+      sql += ' AND (s.student_id LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (school_year) {
+      sql += ' AND e.school_year = ?';
+      params.push(school_year);
+    }
+    if (semester) {
+      sql += ' AND e.semester = ?';
+      params.push(semester);
+    }
+
+    sql += ' ORDER BY t.created_at DESC';
+
+    const txs = await query(sql, params);
     res.json({ success: true, data: txs });
   } catch (error) {
     console.error('List pending transactions error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// All transactions with filters for logs/history
+export const listTransactions = async (req: AuthRequest, res: Response) => {
+  try {
+    const { search, status, school_year, semester } = req.query;
+
+    let sql =
+      `SELECT t.*, e.school_year, e.semester, e.total_amount,
+              s.student_id, s.first_name || ' ' || s.last_name as student_name,
+              s.course, s.year_level,
+              (SELECT username FROM users WHERE id = t.processed_by) as processed_by_name
+       FROM transactions t
+       JOIN enrollments e ON t.enrollment_id = e.id
+       JOIN students s ON e.student_id = s.id
+       WHERE 1=1`;
+    const params: any[] = [];
+
+    if (status) { sql += ' AND t.status = ?'; params.push(status); }
+    if (search) {
+      sql += ' AND (s.student_id LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ? OR t.reference_number LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    if (school_year) { sql += ' AND e.school_year = ?'; params.push(school_year); }
+    if (semester) { sql += ' AND e.semester = ?'; params.push(semester); }
+
+    sql += ' ORDER BY t.created_at DESC';
+
+    const rows = await query(sql, params);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('List transactions error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -72,11 +129,22 @@ export const cashierReport = async (req: AuthRequest, res: Response) => {
   try {
     const totalCollected = await query(`SELECT SUM(amount) as total FROM transactions WHERE status = 'Completed'`);
     const pending = await query(`SELECT COUNT(*) as total FROM transactions WHERE status = 'Pending'`);
-    res.json({ success: true, data: { totalCollected: totalCollected[0]?.total || 0, pending: pending[0]?.total || 0 } });
+    const outstanding = await query(
+      `SELECT SUM(e.total_amount - IFNULL(p.paid,0)) as balance
+       FROM enrollments e
+       LEFT JOIN (
+         SELECT enrollment_id, SUM(amount) as paid
+         FROM transactions
+         WHERE status = 'Completed'
+         GROUP BY enrollment_id
+       ) p ON p.enrollment_id = e.id
+       WHERE e.status != 'Rejected'`
+    );
+    res.json({ success: true, data: { totalCollected: totalCollected[0]?.total || 0, pending: pending[0]?.total || 0, outstanding: outstanding[0]?.balance || 0 } });
   } catch (error) {
     console.error('Cashier report error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-export default { listPendingTransactions, processTransaction, cashierReport };
+export default { listPendingTransactions, listTransactions, processTransaction, cashierReport };

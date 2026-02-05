@@ -15,4 +15,9 @@ export const fetchEnrollmentStats = async () => {
   return res.data;
 };
 
-export default { fetchUsage, fetchStudentsPerProgram, fetchEnrollmentStats };
+export const fetchDeanSummary = async () => {
+  const res = await api.get('/analytics/dean-summary');
+  return res.data;
+};
+
+export default { fetchUsage, fetchStudentsPerProgram, fetchEnrollmentStats, fetchDeanSummary };

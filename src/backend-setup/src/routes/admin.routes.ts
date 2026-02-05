@@ -29,7 +29,7 @@ router.get('/dashboard/stats', authenticate, authorize('admin', 'superadmin', 'd
 router.get('/students', authenticate, authorize('admin', 'superadmin', 'dean', 'registrar'), getAllStudents);
 router.get('/students/:id', authenticate, authorize('admin', 'superadmin', 'dean', 'registrar'), getStudentById);
 router.post('/students', authenticate, authorize('admin', 'superadmin'), createStudent);
-router.put('/students/:id', authenticate, authorize('admin', 'superadmin'), updateStudent);
+router.put('/students/:id', authenticate, authorize('admin', 'superadmin', 'registrar'), updateStudent);
 router.delete('/students/:id', authenticate, authorize('superadmin'), deleteStudent);
 
 // Teachers (Faculty)

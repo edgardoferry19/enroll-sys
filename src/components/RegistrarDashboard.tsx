@@ -35,6 +35,7 @@ import {
 import { registrarService } from '../services/registrar.service';
 import { adminService } from '../services/admin.service';
 import { gradesService } from '../services/grades.service';
+import { maintenanceService } from '../services/maintenance.service';
 
 interface RegistrarDashboardProps {
   onLogout: () => void;
@@ -75,6 +76,13 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
   const [gradeSubmissions, setGradeSubmissions] = useState<any[]>([]);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [enrollmentReport, setEnrollmentReport] = useState<any>(null);
+  const [sections, setSections] = useState<any[]>([]);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignForm, setAssignForm] = useState<{ enrollmentId: number | null; sectionId: string }>({ enrollmentId: null, sectionId: '' });
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [viewStudentOpen, setViewStudentOpen] = useState(false);
+  const [editStudentForm, setEditStudentForm] = useState<any>({});
 
   useEffect(() => {
     fetchData();
@@ -89,6 +97,10 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
         const statsResponse = await registrarService.getDashboardStats();
         if (statsResponse.success) {
           setDashboardStats(statsResponse.data);
+        }
+        const reportResp = await registrarService.getEnrollmentReport();
+        if (reportResp.success) {
+          setEnrollmentReport(reportResp.data);
         }
         // Fetch recent CORs and clearances for dashboard
         const corsResponse = await registrarService.getAllCORs({ status: 'Pending' });
@@ -123,6 +135,10 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
           if (pendingResp) {
             const list = pendingResp.data || pendingResp || [];
             setPendingEnrollments(list);
+          }
+          const sectionsResp = await maintenanceService.getAllSections();
+          if (sectionsResp.success) {
+            setSections(sectionsResp.data || []);
           }
       } else if (activeSection === 'Subject Assessments') {
         // Fetch enrollments pending registrar subject assessment
@@ -178,6 +194,22 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
       console.error('Failed to fetch assessment details:', err);
     }
     setSubjectAssessDialogOpen(true);
+  };
+
+  const handleAssignSection = async () => {
+    if (!assignForm.enrollmentId || !assignForm.sectionId) return;
+    try {
+      setLoading(true);
+      await registrarService.assignSection(assignForm.enrollmentId, Number(assignForm.sectionId));
+      setAssignDialogOpen(false);
+      setAssignForm({ enrollmentId: null, sectionId: '' });
+      await fetchData();
+      alert('Section assigned successfully');
+    } catch (err: any) {
+      setError(err.message || 'Failed to assign section');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleApproveSubjectAssessment = async () => {
@@ -244,6 +276,37 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
     if (diffHours < 24) return `${diffHours} hours ago`;
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays} days ago`;
+  };
+
+  const openRecord = (student: any) => {
+    setSelectedRecord(student);
+    setEditStudentForm({
+      first_name: student.first_name,
+      middle_name: student.middle_name,
+      last_name: student.last_name,
+      course: student.course,
+      year_level: student.year_level,
+      status: student.status,
+      clearance_status: student.clearance_status,
+      contact_number: student.contact_number,
+      address: student.address
+    });
+    setViewStudentOpen(true);
+  };
+
+  const handleUpdateStudentRecord = async () => {
+    if (!selectedRecord) return;
+    try {
+      setLoading(true);
+      await adminService.updateStudent(selectedRecord.id, editStudentForm);
+      setViewStudentOpen(false);
+      await fetchData();
+      alert('Student record updated');
+    } catch (err: any) {
+      setError(err.message || 'Failed to update student');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const stats = dashboardStats ? [
@@ -321,6 +384,50 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
             );
           })}
         </div>
+
+        {/* Enrollment Analytics */}
+        {enrollmentReport && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <Card className="border-0 shadow-lg">
+              <div className="p-4 border-b">
+                <h3 className="font-semibold text-slate-900">Enrollment Totals</h3>
+                <p className="text-sm text-slate-500">Per semester and pending pipeline</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
+                  <span className="text-sm text-slate-600">Pending Enrollments</span>
+                  <span className="font-semibold text-orange-600">{enrollmentReport.pending}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-800 mb-2">Per Semester</p>
+                  <div className="space-y-1">
+                    {enrollmentReport.perSemester?.map((row: any) => (
+                      <div key={row.period} className="flex justify-between text-sm">
+                        <span className="text-slate-600">{row.period}</span>
+                        <span className="font-semibold">{row.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-0 shadow-lg">
+              <div className="p-4 border-b">
+                <h3 className="font-semibold text-slate-900">Students per Section</h3>
+                <p className="text-sm text-slate-500">Helps balance assignments</p>
+              </div>
+              <div className="p-4 space-y-2 max-h-[320px] overflow-y-auto">
+                {enrollmentReport.perSection?.map((row: any) => (
+                  <div key={`${row.section_code}-${row.section_name}`} className="flex justify-between text-sm border-b py-1">
+                    <span className="text-slate-600">{row.section_code} • {row.section_name}</span>
+                    <span className="font-semibold">{row.total}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -458,13 +565,9 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" onClick={() => openRecord(student)}>
                           <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
+                          View / Edit
                         </Button>
                       </div>
                     </div>
@@ -779,6 +882,16 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
                       <Button size="sm" variant="outline" onClick={() => handleGenerateCOR(e.id)}>
                         Generate COR
                       </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          setAssignForm({ enrollmentId: e.id, sectionId: '' });
+                          setAssignDialogOpen(true);
+                        }}
+                      >
+                        Assign Section
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1030,6 +1143,114 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
                   {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Approve & Forward to Dean
                 </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Section Dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Section</DialogTitle>
+            <DialogDescription>Select a section for this enrollment</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Section</Label>
+              <Select
+                value={assignForm.sectionId}
+                onValueChange={(v) => setAssignForm((prev) => ({ ...prev, sectionId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sections.map((s) => (
+                    <SelectItem key={s.id} value={s.id.toString()}>
+                      {s.section_code} • {s.section_name} • {s.course} {s.year_level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleAssignSection} disabled={!assignForm.sectionId}>
+                Assign Section
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Student Record Dialog */}
+      <Dialog open={viewStudentOpen} onOpenChange={setViewStudentOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Student Record</DialogTitle>
+            <DialogDescription>View and update basic details.</DialogDescription>
+          </DialogHeader>
+          {selectedRecord && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>First Name</Label>
+                  <Input value={editStudentForm.first_name || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, first_name: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Last Name</Label>
+                  <Input value={editStudentForm.last_name || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, last_name: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Course</Label>
+                  <Input value={editStudentForm.course || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, course: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Year Level</Label>
+                  <Input type="number" value={editStudentForm.year_level || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, year_level: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select
+                    value={editStudentForm.status || 'Active'}
+                    onValueChange={(v) => setEditStudentForm((p: any) => ({ ...p, status: v }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Inactive">Inactive</SelectItem>
+                      <SelectItem value="Graduated">Graduated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Clearance Status</Label>
+                  <Select
+                    value={editStudentForm.clearance_status || 'Clear'}
+                    onValueChange={(v) => setEditStudentForm((p: any) => ({ ...p, clearance_status: v }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Clear">Clear</SelectItem>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="Blocked">Blocked</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label>Contact Number</Label>
+                <Input value={editStudentForm.contact_number || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, contact_number: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Address</Label>
+                <Input value={editStudentForm.address || ''} onChange={(e) => setEditStudentForm((p: any) => ({ ...p, address: e.target.value }))} />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setViewStudentOpen(false)}>Close</Button>
+                <Button onClick={handleUpdateStudentRecord}>Save Changes</Button>
               </div>
             </div>
           )}

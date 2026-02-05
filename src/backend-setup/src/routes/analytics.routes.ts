@@ -8,5 +8,7 @@ const router = Router();
 router.get('/usage', authenticate, authorize('admin', 'dean', 'superadmin'), analytics.getUsage);
 router.get('/students-per-program', authenticate, authorize('admin', 'dean', 'superadmin'), analytics.getStudentsPerProgram);
 router.get('/enrollment-stats', authenticate, authorize('admin', 'dean', 'superadmin'), analytics.getEnrollmentStats);
+router.get('/cashier-summary', authenticate, authorize('cashier', 'registrar', 'admin', 'superadmin'), analytics.getCashierSummary);
+router.get('/dean-summary', authenticate, authorize('dean', 'admin', 'superadmin'), analytics.getDeanSummary);
 
 export default router;

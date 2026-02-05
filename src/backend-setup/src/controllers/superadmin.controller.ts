@@ -210,13 +210,47 @@ export const getSuperadminDashboardStats = async (req: AuthRequest, res: Respons
        WHERE datetime(created_at) > datetime('now', '-24 hours')`
     );
 
+    // Cashier / revenue snapshot
+    const revenue = await query(`SELECT SUM(amount) as total FROM transactions WHERE status = 'Completed'`);
+    const outstanding = await query(
+      `SELECT SUM(e.total_amount - IFNULL(p.paid,0)) as balance
+       FROM enrollments e
+       LEFT JOIN (
+         SELECT enrollment_id, SUM(amount) as paid
+         FROM transactions
+         WHERE status = 'Completed'
+         GROUP BY enrollment_id
+       ) p ON p.enrollment_id = e.id
+       WHERE e.status != 'Rejected'`
+    );
+
+    // Registrar pipeline snapshot
+    const pendingEnrollments = await query(`SELECT COUNT(*) as total FROM enrollments WHERE status != 'Enrolled'`);
+
+    // Dean approvals pending
+    const pendingDean = await query(`SELECT COUNT(*) as total FROM enrollments WHERE status = 'For Dean Approval'`);
+
+    // Recent activity logs (latest 10)
+    const activityLog = await query(
+      `SELECT l.*, u.username
+       FROM activity_logs l
+       LEFT JOIN users u ON u.id = l.user_id
+       ORDER BY l.created_at DESC
+       LIMIT 10`
+    );
+
     res.json({
       success: true,
       data: {
         totalUsers: totalUsers[0]?.count || 0,
         activeSessions: recentLogins[0]?.count || 0,
         systemHealth: dbHealth.length > 0 ? 'OK' : 'Error',
-        recentActivity: recentActivity[0]?.count || 0
+        recentActivity: recentActivity[0]?.count || 0,
+        revenue: revenue[0]?.total || 0,
+        outstanding: outstanding[0]?.balance || 0,
+        pipelinePending: pendingEnrollments[0]?.total || 0,
+        deanApprovals: pendingDean[0]?.total || 0,
+        activityLog
       }
     });
   } catch (error) {

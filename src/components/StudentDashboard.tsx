@@ -39,7 +39,9 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
+                selectedFile={uploadedDocuments['psa']}
+                downloadUrl={getDocDownloadUrl('psa')}
+                downloadLabel="Template"
   SelectValue,
 } from './ui/select';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
@@ -48,7 +50,8 @@ interface StudentDashboardProps {
   onLogout: () => void;
 }
 
-export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
+                selectedFile={uploadedDocuments['report_card']}
+                downloadUrl={getDocDownloadUrl('report_card')}
   const [activeSection, setActiveSection] = useState('Dashboard');
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [studentType, setStudentType] = useState<string>('');
@@ -56,8 +59,9 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('basic-info');
   const [enrollmentStatus, setEnrollmentStatus] = useState<string>('none');
-  const [hasNewNotification, setHasNewNotification] = useState(true);
-  const [showNotification, setShowNotification] = useState(false);
+  const [hasNewNotification, setHasNewNotification] = useState(false);
+                selectedFile={uploadedDocuments['birth_certificate']}
+                downloadUrl={getDocDownloadUrl('birth_certificate')}
   const [loading, setLoading] = useState(true);
   const [currentEnrollment, setCurrentEnrollment] = useState<any>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -66,22 +70,25 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [studentProfile, setStudentProfile] = useState<any>(null);
   const [enrollmentDetails, setEnrollmentDetails] = useState<any>(null);
-  const [assessmentOpen, setAssessmentOpen] = useState(false);
+                selectedFile={uploadedDocuments['id_photo']}
+                downloadUrl={getDocDownloadUrl('id_photo')}
   const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
   const [assessmentData, setAssessmentData] = useState<any>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File>>({});
   const [schoolYear, setSchoolYear] = useState('2024-2025');
   const [semester, setSemester] = useState('1st Semester');
-  const [profileForm, setProfileForm] = useState({
+                selectedFile={uploadedDocuments['moral_certificate']}
+                downloadUrl={getDocDownloadUrl('moral_certificate')}
     first_name: '',
     middle_name: '',
     last_name: '',
     suffix: '',
     contact_number: '',
     address: '',
-    birth_date: '',
+                  <Button size="sm" variant="outline" className="gap-2" onClick={() => window.open(getDocDownloadUrl('admission_forms'), '_blank')}>
     gender: '',
     username: ''
   });
@@ -89,6 +96,45 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     newPassword: '',
     confirmPassword: ''
   });
+
+  const getDocDownloadUrl = (docType: string) => `/uploads/documents/${docType}.pdf`;
+
+  const rebuildNotifications = (status: string, assessment: any, payments: any[], enrollment: any) => {
+    const notices: any[] = [];
+    if (status && status !== 'none') {
+      notices.push({
+        title: 'Enrollment Status',
+        detail: `Current status: ${status}`,
+        action: status.includes('Payment') ? 'View payments' : undefined,
+        actionType: 'payments'
+      });
+    }
+
+    const total = assessment?.total_amount || assessment?.total || enrollment?.total_amount || 0;
+    const paid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    const balance = Math.max(total - paid, 0);
+
+    if (balance > 0) {
+      notices.push({
+        title: 'Outstanding Balance',
+        detail: `₱${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })} remaining.`,
+        action: 'Review payments',
+        actionType: 'payments'
+      });
+    }
+
+    if (enrollment?.section) {
+      notices.push({
+        title: 'Section Placement',
+        detail: `You are tagged under ${enrollment.section}.`,
+        action: 'View schedule',
+        actionType: 'schedule'
+      });
+    }
+
+    setNotifications(notices);
+    setHasNewNotification(notices.length > 0);
+  };
 
   // Fetch student data on mount
   useEffect(() => {
@@ -266,6 +312,27 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       alert('Payment submitted for verification');
     } catch (error: any) {
       alert(error.message || 'Failed to submit payment');
+        // Pull assessment + payments early so tuition and notifications are populated
+        let paymentsList: any[] = [];
+        let assessmentPayload: any = null;
+        if (student?.student_id) {
+          try {
+            const assessmentResp = await paymentsService.getAssessment(student.student_id.toString());
+            assessmentPayload = assessmentResp?.data || assessmentResp;
+            const paymentsResp = await paymentsService.listPayments(student.student_id.toString());
+            paymentsList = paymentsResp?.data || paymentsResp || [];
+            setAssessmentData(assessmentPayload);
+            setPaymentHistory(paymentsList);
+          } catch (innerErr) {
+            console.error('Payment preload failed:', innerErr);
+          }
+        }
+        rebuildNotifications(
+          current?.status || 'none',
+          assessmentPayload,
+          paymentsList,
+          current
+        );
     } finally {
       setLoading(false);
     }
@@ -383,7 +450,9 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
       const assessmentResp = await paymentsService.getAssessment(id.toString());
       const paymentsResp = await paymentsService.listPayments(id.toString());
       setAssessmentData(assessmentResp?.data || assessmentResp);
-      setPaymentHistory(paymentsResp?.data || paymentsResp || []);
+      const history = paymentsResp?.data || paymentsResp || [];
+      setPaymentHistory(history);
+      rebuildNotifications(enrollmentStatus, assessmentResp?.data || assessmentResp, history, currentEnrollment);
       setPaymentsOpen(true);
     } catch (err: any) {
       console.error('Failed to load payments:', err);
@@ -726,6 +795,28 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
           </Alert>
         )}
 
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="p-4 shadow-sm">
+            <p className="text-xs text-slate-500 mb-1">Enrollment Status</p>
+            <p className="text-lg font-semibold text-slate-900">{enrollmentStatus || 'Not started'}</p>
+            {currentEnrollment?.school_year && (
+              <p className="text-sm text-slate-600">{currentEnrollment.school_year} • {currentEnrollment.semester}</p>
+            )}
+          </Card>
+          <Card className="p-4 shadow-sm">
+            <p className="text-xs text-slate-500 mb-1">Tuition & Fees</p>
+            <p className="text-lg font-semibold text-slate-900">
+              ₱{(assessmentData?.total_amount || assessmentData?.total || currentEnrollment?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-sm text-slate-600">Paid: ₱{paymentHistory.reduce((sum: number, p: any) => sum + (p.amount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+          </Card>
+          <Card className="p-4 shadow-sm">
+            <p className="text-xs text-slate-500 mb-1">Grades Status</p>
+            <p className="text-lg font-semibold text-slate-900">{enrollmentDetails?.grades_status || 'Pending'}</p>
+            <p className="text-sm text-slate-600">Subjects loaded: {currentCourses.length}</p>
+          </Card>
+        </div>
+
         {/* Current Courses */}
         <Card className="border-0 shadow-lg">
           <div className="p-6">
@@ -912,7 +1003,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between">
                   <Label>Download Admission Forms</Label>
-                  <Button size="sm" variant="outline" className="gap-2">
+                  <Button size="sm" variant="outline" className="gap-2" onClick={() => window.open(getDocDownloadUrl('scholarship_application'), '_blank')}>
                     <Download className="h-4 w-4" />
                     Download
                   </Button>
@@ -943,6 +1034,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="tor"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['tor']}
+                downloadUrl={getDocDownloadUrl('tor')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -952,6 +1044,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="certificate_transfer"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['certificate_transfer']}
+                downloadUrl={getDocDownloadUrl('certificate_transfer')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -961,6 +1054,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="other_requirements"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['other_requirements']}
+                downloadUrl={getDocDownloadUrl('other_requirements')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -987,6 +1081,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="clearance"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['clearance']}
+                downloadUrl={getDocDownloadUrl('clearance')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -996,6 +1091,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="update_forms"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['update_forms']}
+                downloadUrl={getDocDownloadUrl('update_forms')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -1073,6 +1169,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="scholarship_application"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['scholarship_application']}
+                downloadUrl={getDocDownloadUrl('scholarship_application')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -1082,6 +1179,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                 docType="scholarship_supporting"
                 onFileSelect={handleDocumentUpload}
                 selectedFile={uploadedDocuments['scholarship_supporting']}
+                downloadUrl={getDocDownloadUrl('scholarship_supporting')}
                 acceptedFormats=".pdf,.doc,.docx,.jpg,.jpeg,.png"
               />
 
@@ -1693,29 +1791,39 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
                   <DialogDescription>Recent updates about your enrollment and payments.</DialogDescription>
                 </DialogHeader>
                 <div className="mt-4 space-y-3">
-                  <div className="p-3 border rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">Enrollment Approved</p>
-                        <p className="text-sm text-slate-600">Your subject selection has been approved. Please proceed to payment.</p>
-                      </div>
-                      <div className="text-right">
-                        <Button size="sm" onClick={() => { openPaymentsModal(); setShowNotification(false); }}>View Payments</Button>
+                  {notifications.length === 0 && (
+                    <p className="text-sm text-slate-500">No new notifications.</p>
+                  )}
+                  {notifications.map((notice, idx) => (
+                    <div key={idx} className="p-3 border rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium">{notice.title}</p>
+                          <p className="text-sm text-slate-600">{notice.detail}</p>
+                        </div>
+                        {notice.action && (
+                          <div className="text-right">
+                            <Button
+                              size="sm"
+                              variant={notice.actionType === 'download' ? 'outline' : 'default'}
+                              onClick={() => {
+                                if (notice.actionType === 'payments') {
+                                  openPaymentsModal();
+                                } else if (notice.actionType === 'download') {
+                                  handleDownloadEnrollmentForm();
+                                } else if (notice.actionType === 'schedule') {
+                                  setActiveSection('My Schedule');
+                                }
+                                setShowNotification(false);
+                              }}
+                            >
+                              {notice.action}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="p-3 border rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">Enrollment Form Ready</p>
-                        <p className="text-sm text-slate-600">Your enrollment form is available for download.</p>
-                      </div>
-                      <div className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => { handleDownloadEnrollmentForm(); setShowNotification(false); }}>Download</Button>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
                 <div className="flex justify-end mt-4">
                   <Button variant="outline" onClick={() => setShowNotification(false)}>Close</Button>
