@@ -147,6 +147,43 @@ class MaintenanceService {
       throw new Error(handleApiError(error));
     }
   }
+
+  // Subject schedules
+  async getSchedules(subjectId: number): Promise<any> {
+    try {
+      const response = await api.get(`/maintenance/subjects/${subjectId}/schedules`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async createSchedule(subjectId: number, scheduleData: { day_time: string; room?: string; instructor?: string; capacity?: number; }): Promise<any> {
+    try {
+      const response = await api.post(`/maintenance/subjects/${subjectId}/schedules`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async updateSchedule(id: number, scheduleData: any): Promise<any> {
+    try {
+      const response = await api.put(`/maintenance/schedules/${id}`, scheduleData);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async deleteSchedule(id: number): Promise<any> {
+    try {
+      const response = await api.delete(`/maintenance/schedules/${id}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const maintenanceService = new MaintenanceService();

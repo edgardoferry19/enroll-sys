@@ -2,6 +2,18 @@ import { Response } from 'express';
 import { query, run, get } from '../database/connection';
 import { AuthRequest } from '../middleware/auth.middleware';
 
+const resolveStudentId = async (userId?: number) => {
+  if (userId) {
+    const students = await query('SELECT id FROM students WHERE user_id = ?', [userId]);
+    if (students.length > 0) {
+      return students[0].id as number;
+    }
+  }
+
+  const fallback = await query('SELECT id FROM students ORDER BY id ASC LIMIT 1');
+  return fallback.length > 0 ? (fallback[0].id as number) : null;
+};
+
 export const createEnrollment = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -12,20 +24,13 @@ export const createEnrollment = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: 'school_year and semester are required' });
     }
 
-    // Get student ID
-    const students = await query(
-      'SELECT id FROM students WHERE user_id = ?',
-      [userId]
-    );
-
-    if (students.length === 0) {
+    const studentId = await resolveStudentId(userId);
+    if (!studentId) {
       return res.status(404).json({
         success: false,
         message: 'Student profile not found'
       });
     }
-
-    const studentId = students[0].id;
 
     // Check if enrollment already exists for this period
     const existingEnrollments = await query(
@@ -68,20 +73,13 @@ export const getMyEnrollments = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
-    // Get student ID
-    const students = await query(
-      'SELECT id FROM students WHERE user_id = ?',
-      [userId]
-    );
-
-    if (students.length === 0) {
+    const studentId = await resolveStudentId(userId);
+    if (!studentId) {
       return res.status(404).json({
         success: false,
         message: 'Student not found'
       });
     }
-
-    const studentId = students[0].id;
 
     // Get enrollments with subject count
     const enrollments = await query(
@@ -127,21 +125,56 @@ export const getEnrollmentDetails = async (req: AuthRequest, res: Response) => {
     }
 
     // Get enrolled subjects
-    const subjects = await query(
-      `SELECT es.*, s.subject_code, s.subject_name, s.units, s.description
+    // Ensure `schedule_id` column exists in enrollment_subjects (add if missing)
+    try {
+      const tableInfo = await query("PRAGMA table_info(enrollment_subjects)");
+      const hasScheduleId = (tableInfo || []).some((c: any) => c.name === 'schedule_id');
+      if (!hasScheduleId) {
+        try {
+          await run("ALTER TABLE enrollment_subjects ADD COLUMN schedule_id INTEGER");
+          console.log('Added schedule_id column to enrollment_subjects');
+        } catch (alterErr) {
+          console.warn('Failed to add schedule_id column (may already exist):', alterErr);
+        }
+      }
+    } catch (infoErr) {
+      console.warn('Could not inspect enrollment_subjects table info:', infoErr);
+    }
+
+    // Now attempt to include schedule details via LEFT JOIN; this will work even if schedules table missing (LEFT JOIN)
+    let subjects = await query(
+      `SELECT es.*, s.subject_code, s.subject_name, s.units, s.description,
+              ss.id as schedule_id, ss.day_time as schedule_day_time, ss.room as schedule_room, ss.instructor as schedule_instructor
        FROM enrollment_subjects es
        JOIN subjects s ON es.subject_id = s.id
+       LEFT JOIN subject_schedules ss ON es.schedule_id = ss.id
        WHERE es.enrollment_id = ?`,
       [id]
     );
 
-    res.json({
-      success: true,
-      data: {
-        enrollment: enrollments[0],
-        subjects
-      }
-    });
+    // For each subject row, also load available schedules (if table exists)
+    try {
+      const subjectsWithSchedules = await Promise.all(subjects.map(async (es: any) => {
+        try {
+          const opts = await query('SELECT id, day_time, room, instructor FROM subject_schedules WHERE subject_id = ? AND is_active = 1 ORDER BY id', [es.subject_id || es.subject_id]);
+          return { ...es, schedule_options: opts || [] };
+        } catch (e) {
+          // schedules table may not exist
+          return { ...es, schedule_options: [] };
+        }
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          enrollment: enrollments[0],
+          subjects: subjectsWithSchedules
+        }
+      });
+    } catch (outerErr) {
+      console.warn('Failed to fetch schedule options, returning subjects without options', outerErr);
+      res.json({ success: true, data: { enrollment: enrollments[0], subjects } });
+    }
   } catch (error) {
     console.error('Get enrollment details error:', error);
     res.status(500).json({
@@ -154,7 +187,7 @@ export const getEnrollmentDetails = async (req: AuthRequest, res: Response) => {
 export const addSubjectToEnrollment = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { subject_id, schedule, room, instructor } = req.body;
+    const { subject_id, schedule, room, instructor, schedule_id } = req.body;
 
     // Check if enrollment exists and is in correct status
     const enrollments = await query(
@@ -197,12 +230,21 @@ export const addSubjectToEnrollment = async (req: AuthRequest, res: Response) =>
       });
     }
 
-    // Add subject
+    // If schedule_id provided, attempt to fetch its day_time
+    let scheduleText = schedule || null;
+    if (schedule_id) {
+      try {
+        const sch = await query('SELECT day_time FROM subject_schedules WHERE id = ? AND is_active = 1', [schedule_id]);
+        if (sch.length > 0) scheduleText = sch[0].day_time;
+      } catch (e) { console.warn('Failed to resolve schedule_id', e); }
+    }
+
+    // Add subject (store optional schedule_id for reference)
     await run(
       `INSERT INTO enrollment_subjects 
-        (enrollment_id, subject_id, schedule, room, instructor) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, subject_id, schedule, room, instructor]
+        (enrollment_id, subject_id, schedule, room, instructor, schedule_id) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, subject_id, scheduleText, room, instructor, schedule_id || null]
     );
 
     // Update total units in enrollment

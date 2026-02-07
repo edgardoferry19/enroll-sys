@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Eye,
   FileText,
+  Download,
   Plus,
   Trash2,
   Printer,
@@ -31,6 +32,8 @@ import { studentService } from '../services/student.service';
 import { facultyService } from '../services/faculty.service';
 import { gradesService } from '../services/grades.service';
 import { maintenanceService } from '../services/maintenance.service';
+import analyticsService from '../services/analytics.service';
+import logsService from '../services/logs.service';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
@@ -189,6 +192,15 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
   // Data state
   const [stats, setStats] = useState<any[]>([]);
+  const [usageStats, setUsageStats] = useState<any>(null);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [logsPage, setLogsPage] = useState<number>(1);
+  const [logsLimit, setLogsLimit] = useState<number>(25);
+  const [logsTotal, setLogsTotal] = useState<number | null>(null);
+  const [logsLoading, setLogsLoading] = useState<boolean>(false);
+  const [logsMoreLoading, setLogsMoreLoading] = useState<boolean>(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateUploading, setTemplateUploading] = useState<boolean>(false);
   const [recentEnrollments, setRecentEnrollments] = useState<any[]>([]);
   const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -226,6 +238,15 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   // Fetch dashboard data
   useEffect(() => {
     fetchDashboardData();
+    // load templates
+    (async () => {
+      try {
+        const list = await adminService.listTemplates();
+        setTemplates(list?.data || list || []);
+      } catch (err) {
+        console.error('Failed to load templates', err);
+      }
+    })();
   }, [activeSection]);
 
   const fetchDashboardData = async () => {
@@ -287,6 +308,23 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
           time: formatTimeAgo(e.created_at)
         })) || [];
         setRecentEnrollments(recent);
+
+        // Fetch usage analytics (platform-level)
+        try {
+          const usageResp = await analyticsService.fetchUsage();
+          setUsageStats(usageResp?.data || usageResp || null);
+        } catch (err) {
+          console.error('Failed to load usage analytics:', err);
+        }
+        // Fetch recent activity logs (first page)
+        try {
+          const logsResp = await logsService.listLogs({ page: 1, limit: logsLimit });
+          setActivityLogs(logsResp?.data || logsResp || []);
+          setLogsTotal(logsResp?.meta?.total ?? null);
+          setLogsPage(1);
+        } catch (err) {
+          console.error('Failed to load activity logs:', err);
+        }
       }
 
       // Fetch pending enrollments
@@ -871,10 +909,185 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             );
           })
         )}
+
+        {/* Forms / Templates Manager is moved below the stats grid to span full width */}
       </div>
 
+      {/* Forms / Templates Manager: full-width responsive grid (moved below stats) */}
+      <div className="my-4 pb-6">
+        <Card className="border-0 shadow-lg w-full">
+          <div className="px-4 py-3 flex items-center justify-between bg-gradient-to-r from-indigo-700 to-indigo-900 rounded-t-md">
+            <div>
+              <h3 className="text-white text-sm font-medium">Forms & Templates</h3>
+              <p className="text-indigo-100 text-xs mt-0.5">Minimal templates manager</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input style={{ display: 'none' }} type="file" id="templateUpload" onChange={async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (!file) return;
+                try {
+                  setTemplateUploading(true);
+                  await adminService.uploadTemplate(file as any);
+                  const list = await adminService.listTemplates();
+                  setTemplates(list?.data || list || []);
+                  (document.getElementById('templateUpload') as HTMLInputElement).value = '';
+                } catch (err) {
+                  console.error('Upload failed', err);
+                  alert('Upload failed');
+                } finally {
+                  setTemplateUploading(false);
+                }
+              }} />
+              <label htmlFor="templateUpload" className="inline-flex items-center px-3 py-1.5 bg-white text-xs rounded cursor-pointer shadow-sm">Upload</label>
+              <Button size="xs" variant="ghost" onClick={async () => {
+                try {
+                  setTemplateUploading(true);
+                  const list = await adminService.listTemplates();
+                  setTemplates(list?.data || list || []);
+                } finally {
+                  setTemplateUploading(false);
+                }
+              }}>Refresh</Button>
+            </div>
+          </div>
+          <div className="p-3">
+            <ScrollArea className="h-[340px]">
+              {templates.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-sm text-slate-500">No templates uploaded</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {templates.map((t: any) => (
+                    <div key={t.name} className="flex flex-col gap-2 p-3 rounded-md border bg-white hover:shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 flex items-center justify-center bg-indigo-50 rounded">
+                          <FileText className="w-4 h-4 text-indigo-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <a href={t.url} target="_blank" rel="noreferrer" className="text-sm font-medium block truncate" title={t.name}>{t.name}</a>
+                          <p className="text-xs text-slate-400 mt-0.5">{t.size ? ((t.size/1024).toFixed(1) + ' KB') : ''}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-slate-400">{t.mtime ? new Date(t.mtime).toLocaleString() : ''}</p>
+                        <div className="flex items-center gap-1">
+                          <Button size="xs" variant="ghost" onClick={() => window.open(t.url, '_blank')}>
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button size="xs" variant="destructive" onClick={async () => {
+                            if (!confirm(`Delete template ${t.name}?`)) return;
+                            try {
+                              await adminService.deleteTemplate(t.name);
+                              setTemplates(prev => prev.filter(p => p.name !== t.name));
+                            } catch (err) {
+                              console.error('Delete failed', err);
+                              alert('Delete failed');
+                            }
+                          }}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </Card>
+      </div>
+
+        {usageStats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <Card className="p-4 border-0 shadow-sm">
+              <p className="text-xs text-slate-500">Active Users (24h)</p>
+              <p className="text-xl font-semibold">{usageStats.activeUsers24h || 0}</p>
+            </Card>
+            <Card className="p-4 border-0 shadow-sm">
+              <p className="text-xs text-slate-500">Staff Accounts</p>
+              <p className="text-xl font-semibold">{usageStats.staffAccounts || 0}</p>
+            </Card>
+            <Card className="p-4 border-0 shadow-sm">
+              <p className="text-xs text-slate-500">Active Students</p>
+              <p className="text-xl font-semibold">{usageStats.activeStudents || 0}</p>
+            </Card>
+            <Card className="p-4 border-0 shadow-sm">
+              <p className="text-xs text-slate-500">API Calls (24h)</p>
+              <p className="text-xl font-semibold">{usageStats.apiCallsLast24h || 0}</p>
+            </Card>
+          </div>
+        )}
+
+        {/* Activity Logs */}
+        <Card className="border-0 shadow-lg my-4">
+          <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4">
+            <h3 className="text-white">Activity Logs</h3>
+          </div>
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-slate-600">Recent system activity and API events</p>
+                <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={async () => {
+                try {
+                  setLogsLoading(true);
+                  const logsResp = await logsService.listLogs({ page: 1, limit: logsLimit });
+                  setActivityLogs(logsResp?.data || logsResp || []);
+                  setLogsTotal(logsResp?.meta?.total ?? null);
+                  setLogsPage(1);
+                } catch (err) {
+                  console.error('Failed refreshing logs:', err);
+                } finally {
+                  setLogsLoading(false);
+                }
+              }}>Refresh</Button>
+            </div>
+            </div>
+            <ScrollArea className="h-[240px]">
+              <div className="space-y-2">
+                {activityLogs.length === 0 ? (
+                  <p className="text-sm text-slate-500">No recent activity</p>
+                ) : activityLogs.map((log: any) => (
+                  <div key={log.id || `${log.user_id}-${log.ts}`} className="p-3 border rounded-lg bg-slate-50">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-slate-900 font-medium">{log.action || log.type || 'Activity'}</p>
+                        <p className="text-xs text-slate-500">{log.details || log.message || ''}</p>
+                      </div>
+                      <div className="text-xs text-slate-400">{new Date(log.created_at || log.ts || log.time || Date.now()).toLocaleString()}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            <div className="p-3 flex items-center justify-center">
+              {logsMoreLoading ? (
+                <Button size="sm" disabled>Loading...</Button>
+              ) : (logsTotal == null || activityLogs.length < logsTotal) ? (
+                <Button size="sm" onClick={async () => {
+                  try {
+                    setLogsMoreLoading(true);
+                    const nextPage = logsPage + 1;
+                    const resp = await logsService.listLogs({ page: nextPage, limit: logsLimit });
+                    const newItems = resp?.data || resp || [];
+                    setActivityLogs(prev => [...prev, ...newItems]);
+                    setLogsPage(nextPage);
+                    setLogsTotal(resp?.meta?.total ?? logsTotal);
+                  } catch (err) {
+                    console.error('Failed to load more logs:', err);
+                  } finally {
+                    setLogsMoreLoading(false);
+                  }
+                }}>Load more</Button>
+              ) : (
+                <p className="text-xs text-slate-500">No more activity</p>
+              )}
+            </div>
+          </div>
+        </Card>
+
       {/* Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-6">
         {/* Recent Enrollments */}
         <Card className="border-0 shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
@@ -1911,7 +2124,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h1 className="text-3xl mb-2">
+                <h1 className="text-2xl mb-1">
                   {activeSection === 'Dashboard' && 'Admin Dashboard'}
                   {activeSection === 'Enrollment Request' && 'Enrollment Requests'}
                   {activeSection === 'Transactions' && 'Transactions'}
@@ -1924,7 +2137,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   {activeSection === 'College Subjects' && 'College Subjects'}
                   {activeSection === 'School Year' && 'School Year'}
                 </h1>
-                <p className="text-slate-600">Welcome back, Administrator</p>
+                <p className="text-sm text-slate-600">Welcome back to your administration portal</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">

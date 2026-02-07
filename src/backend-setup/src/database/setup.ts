@@ -70,6 +70,7 @@ async function setupDatabase() {
         semester TEXT NOT NULL CHECK(semester IN ('1st', '2nd', 'Summer')),
         status TEXT DEFAULT 'Pending Assessment' CHECK(status IN ('Pending Assessment', 'For Admin Approval', 'For Subject Selection', 'For Registrar Assessment', 'For Dean Approval', 'For Payment', 'Payment Verification', 'Enrolled', 'Rejected')),
         enrollment_date TEXT DEFAULT (datetime('now')),
+        section_id INTEGER,
         assessed_by INTEGER,
         assessed_at TEXT,
         approved_by INTEGER,
@@ -87,6 +88,7 @@ async function setupDatabase() {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL,
         FOREIGN KEY (assessed_by) REFERENCES users(id) ON DELETE SET NULL,
         FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
       )
@@ -115,6 +117,10 @@ async function setupDatabase() {
     } catch (e) {}
     try {
       db.exec("ALTER TABLE enrollments ADD COLUMN others REAL DEFAULT 0.00");
+    } catch (e) {}
+    // Backfill section_id column if missing
+    try {
+      db.exec("ALTER TABLE enrollments ADD COLUMN section_id INTEGER REFERENCES sections(id) ON DELETE SET NULL");
     } catch (e) {}
 
     // Create subjects table
@@ -234,6 +240,20 @@ async function setupDatabase() {
     // Create indexes
     db.exec('CREATE INDEX IF NOT EXISTS idx_user_activity ON activity_logs(user_id, created_at)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_entity ON activity_logs(entity_type, entity_id)');
+
+    // Create notifications table to track per-user read status for activity logs
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        activity_log_id INTEGER NOT NULL,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (activity_log_id) REFERENCES activity_logs(id) ON DELETE CASCADE
+      )
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read)');
 
     // Create faculty table (not users, just records)
     db.exec(`
@@ -382,6 +402,34 @@ async function setupDatabase() {
     db.exec('CREATE INDEX IF NOT EXISTS idx_cor_student ON cors(student_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_cor_enrollment ON cors(enrollment_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_cor_number ON cors(cor_number)');
+
+    // Create subject_schedules table to store schedule options per subject
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS subject_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        day_time TEXT NOT NULL,
+        room TEXT,
+        instructor TEXT,
+        capacity INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+      )
+    `);
+    console.log('✅ Subject schedules table created');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_subject_schedules_subject ON subject_schedules(subject_id)');
+
+    // Add schedule_id column to enrollment_subjects for referencing selected schedule (if not exists)
+    try {
+      const info = db.prepare("PRAGMA table_info(enrollment_subjects)").all();
+      const hasScheduleId = info.some((c: any) => c.name === 'schedule_id');
+      if (!hasScheduleId) {
+        db.exec("ALTER TABLE enrollment_subjects ADD COLUMN schedule_id INTEGER REFERENCES subject_schedules(id)");
+        console.log('✅ Added schedule_id column to enrollment_subjects');
+      }
+    } catch (e) {}
 
     // Update subjects table to add subject_type (SHS or College)
     try {

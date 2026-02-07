@@ -19,6 +19,8 @@ import deanRoutes from './routes/dean.routes';
 import superadminRoutes from './routes/superadmin.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import logsRoutes from './routes/logs.routes';
+import formsRoutes from './routes/forms.routes';
+import notificationsRoutes from './routes/notifications.routes';
 import coursesRoutes from './routes/courses.routes';
 import paymentsRoutes from './routes/payments.routes';
 import curriculumRoutes from './routes/curriculum.routes';
@@ -34,6 +36,12 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Simple request logger for debugging (dev only)
+app.use((req, _res, next) => {
+  console.log(`[req] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Static files for uploads
 // Ensure uploads directory exists
@@ -62,6 +70,8 @@ app.use('/api/dean', deanRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/admin/forms', formsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/curriculum', curriculumRoutes);
@@ -72,6 +82,34 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Enrollment System API is running' });
 });
 
+// Debug route: list registered routes (dev only)
+app.get('/api/debug/routes', (req: Request, res: Response) => {
+  try {
+    const routes: string[] = [];
+    // @ts-ignore - express types
+    app._router.stack.forEach((middleware: any) => {
+      if (middleware.route) {
+        // routes registered directly on the app
+        const methods = Object.keys(middleware.route.methods).join(',').toUpperCase();
+        routes.push(`${methods} ${middleware.route.path}`);
+      } else if (middleware.name === 'router' && middleware.handle && middleware.handle.stack) {
+        // router middleware
+        middleware.handle.stack.forEach((handler: any) => {
+          const route = handler.route;
+          if (route) {
+            const methods = Object.keys(route.methods).join(',').toUpperCase();
+            routes.push(`${methods} ${route.path}`);
+          }
+        });
+      }
+    });
+
+    res.json({ success: true, routes });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to list routes', error: String(err) });
+  }
+});
+
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: any) => {
   console.error(err.stack);
@@ -79,6 +117,16 @@ app.use((err: any, req: Request, res: Response, next: any) => {
     success: false,
     message: 'Internal server error',
     error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// JSON 404 fallback to aid debugging (dev)
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    message: 'Not found',
+    method: req.method,
+    path: req.originalUrl
   });
 });
 

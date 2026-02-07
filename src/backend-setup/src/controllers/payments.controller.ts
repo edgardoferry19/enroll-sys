@@ -11,8 +11,13 @@ function writePayments(items: any[]) { fs.writeFileSync(paymentsFile, JSON.strin
 
 export const getAssessment = (req: Request, res: Response) => {
   const { studentId } = req.params;
-  // placeholder: return a sample assessment
-  const assessment = { studentId, total: 15000, due: 15000, breakdown: { tuition: 12000, misc: 3000 } };
+  // Compute assessment and include paid/due based on stored payments (dev placeholder)
+  const assessmentTotal = 15000; // placeholder total - replace with real calculation later
+  const all = readPayments();
+  const paymentsForStudent = all.filter((p: any) => p.studentId === studentId);
+  const paid = paymentsForStudent.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+  const due = Math.max(assessmentTotal - paid, 0);
+  const assessment = { studentId, total: assessmentTotal, paid, due, breakdown: { tuition: 12000, misc: 3000 } };
   res.json({ success: true, data: assessment });
 };
 

@@ -173,6 +173,36 @@ class AdminService {
       throw new Error(handleApiError(error));
     }
   }
+
+  // Forms/templates management
+  async listTemplates(): Promise<any> {
+    try {
+      const response = await api.get('/admin/forms');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async uploadTemplate(file: File): Promise<any> {
+    try {
+      const form = new FormData();
+      form.append('template', file);
+      const response = await api.post('/admin/forms', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async deleteTemplate(name: string): Promise<any> {
+    try {
+      const response = await api.delete(`/admin/forms/${encodeURIComponent(name)}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const adminService = new AdminService();

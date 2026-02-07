@@ -3,6 +3,7 @@ import {
   getStudentProfile,
   updateStudentProfile,
   getStudentEnrollments,
+  getEnrollmentSubjectsDebug,
   uploadDocument,
   downloadDocument,
   getDocumentByPath
@@ -44,6 +45,7 @@ const upload = multer({
 router.get('/profile', authenticate, authorize('student'), getStudentProfile);
 router.put('/profile', authenticate, authorize('student'), updateStudentProfile);
 router.get('/enrollments', authenticate, authorize('student'), getStudentEnrollments);
+router.get('/enrollment-subjects/debug', authenticate, getEnrollmentSubjectsDebug);
 router.post('/documents', authenticate, authorize('student'), upload.single('document'), uploadDocument);
 router.get('/documents/:id/download', authenticate, downloadDocument);
 router.get('/documents/download', authenticate, getDocumentByPath);

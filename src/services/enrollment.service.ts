@@ -48,7 +48,8 @@ class EnrollmentService {
     subjectId: number,
     schedule?: string,
     room?: string,
-    instructor?: string
+    instructor?: string,
+    schedule_id?: number
   ): Promise<any> {
     try {
       const response = await api.post(`/enrollments/${enrollmentId}/subjects`, {
@@ -56,6 +57,7 @@ class EnrollmentService {
         schedule,
         room,
         instructor,
+        schedule_id
       });
       return response.data;
     } catch (error) {

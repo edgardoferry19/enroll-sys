@@ -15,8 +15,32 @@ function writeLogs(items: any[]) {
 }
 
 export const listLogs = (req: Request, res: Response) => {
-  const logs = readLogs();
-  res.json({ success: true, data: logs });
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+  const limit = Math.max(1, Math.min(200, parseInt(String(req.query.limit || '25'), 10)));
+  const q = (req.query.q || '').toString().toLowerCase();
+  const since = req.query.since ? new Date(String(req.query.since)) : null;
+
+  let logs = readLogs();
+
+  if (since && !isNaN(since.getTime())) {
+    logs = logs.filter((l: any) => {
+      const t = new Date(l.created_at || l.ts || l.time || Date.now());
+      return t >= since;
+    });
+  }
+
+  if (q) {
+    logs = logs.filter((l: any) => {
+      const hay = ((l.action || '') + ' ' + (l.user || '') + ' ' + (l.meta && JSON.stringify(l.meta) || '') + ' ' + (l.details || l.message || '')).toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  const total = logs.length;
+  const start = (page - 1) * limit;
+  const pageItems = logs.slice(start, start + limit);
+
+  res.json({ success: true, data: pageItems, meta: { page, limit, total } });
 };
 
 export const addLog = (req: Request, res: Response) => {

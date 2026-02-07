@@ -13,6 +13,24 @@ class StudentService {
     }
   }
 
+  async listNotifications(): Promise<any> {
+    try {
+      const response = await api.get('/notifications');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async markNotificationRead(id: number | string): Promise<any> {
+    try {
+      const response = await api.post(`/notifications/${id}/read`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   /**
    * Update student profile
    */

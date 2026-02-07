@@ -39,9 +39,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-                selectedFile={uploadedDocuments['psa']}
-                downloadUrl={getDocDownloadUrl('psa')}
-                downloadLabel="Template"
+  SelectTrigger,
   SelectValue,
 } from './ui/select';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
@@ -49,9 +47,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 interface StudentDashboardProps {
   onLogout: () => void;
 }
-
-                selectedFile={uploadedDocuments['report_card']}
-                downloadUrl={getDocDownloadUrl('report_card')}
+export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
   const [activeSection, setActiveSection] = useState('Dashboard');
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [studentType, setStudentType] = useState<string>('');
@@ -60,35 +56,37 @@ interface StudentDashboardProps {
   const [activeTab, setActiveTab] = useState('basic-info');
   const [enrollmentStatus, setEnrollmentStatus] = useState<string>('none');
   const [hasNewNotification, setHasNewNotification] = useState(false);
-                selectedFile={uploadedDocuments['birth_certificate']}
-                downloadUrl={getDocDownloadUrl('birth_certificate')}
+  const [showNotification, setShowNotification] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentEnrollment, setCurrentEnrollment] = useState<any>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [currentCourses, setCurrentCourses] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleOptions, setScheduleOptions] = useState<any[]>([]);
+  const [selectedScheduleForAdd, setSelectedScheduleForAdd] = useState<number | null>(null);
+  const [schedulingSubject, setSchedulingSubject] = useState<any>(null);
   const [studentProfile, setStudentProfile] = useState<any>(null);
   const [enrollmentDetails, setEnrollmentDetails] = useState<any>(null);
-                selectedFile={uploadedDocuments['id_photo']}
-                downloadUrl={getDocDownloadUrl('id_photo')}
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
   const [loadingAssessment, setLoadingAssessment] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
   const [assessmentData, setAssessmentData] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File>>({});
   const [schoolYear, setSchoolYear] = useState('2024-2025');
   const [semester, setSemester] = useState('1st Semester');
-                selectedFile={uploadedDocuments['moral_certificate']}
-                downloadUrl={getDocDownloadUrl('moral_certificate')}
+  const [profileForm, setProfileForm] = useState({
     first_name: '',
     middle_name: '',
     last_name: '',
     suffix: '',
     contact_number: '',
     address: '',
-                  <Button size="sm" variant="outline" className="gap-2" onClick={() => window.open(getDocDownloadUrl('admission_forms'), '_blank')}>
+    birth_date: '',
     gender: '',
     username: ''
   });
@@ -97,7 +95,40 @@ interface StudentDashboardProps {
     confirmPassword: ''
   });
 
+  const normalizeStudentType = (raw?: string) => {
+    if (!raw) return '';
+    const typeMap: Record<string, string> = {
+      New: 'new',
+      Transferee: 'transferee',
+      Returning: 'returning',
+      Continuing: 'continuing',
+      Scholar: 'scholar',
+      new: 'new',
+      transferee: 'transferee',
+      returning: 'returning',
+      continuing: 'continuing',
+      scholar: 'scholar'
+    };
+    return typeMap[raw] || raw.toLowerCase();
+  };
+
   const getDocDownloadUrl = (docType: string) => `/uploads/documents/${docType}.pdf`;
+
+  const getOrdinalSuffix = (n: number) => {
+    if (!n && n !== 0) return '';
+    const v = n % 100;
+    if (v >= 11 && v <= 13) return 'th';
+    switch (n % 10) {
+      case 1:
+        return 'st';
+      case 2:
+        return 'nd';
+      case 3:
+        return 'rd';
+      default:
+        return 'th';
+    }
+  };
 
   const rebuildNotifications = (status: string, assessment: any, payments: any[], enrollment: any) => {
     const notices: any[] = [];
@@ -136,21 +167,38 @@ interface StudentDashboardProps {
     setHasNewNotification(notices.length > 0);
   };
 
-  // Fetch student data on mount
   useEffect(() => {
     fetchStudentData();
+    // poll notifications every 30s
+    const poll = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
+    fetchNotifications();
+    return () => clearInterval(poll);
   }, []);
 
+  const resolvedStudentType = normalizeStudentType(
+    studentProfile?.student_type || enrollmentDetails?.student_type || currentEnrollment?.student_type
+  );
+
+  useEffect(() => {
+    if (!studentType && resolvedStudentType) {
+      setStudentType(resolvedStudentType);
+      setEnrollmentStep((prev) => (prev < 2 ? 2 : prev));
+    }
+  }, [resolvedStudentType, studentType]);
+
   const fetchStudentData = async () => {
+    let student: any = null;
+    let current: any = null;
+    let paymentsList: any[] = [];
+    let assessmentPayload: any = null;
     try {
       setLoading(true);
-      
-      // Fetch student profile
       const profile = await studentService.getProfile();
-      const student = profile.student || profile.data?.student || profile;
+      student = profile.student || profile.data?.student || profile;
       setStudentProfile(student);
-      
-      // Update profile form with fetched data
+
       if (student) {
         setProfileForm({
           first_name: student.first_name || '',
@@ -163,59 +211,72 @@ interface StudentDashboardProps {
           gender: student.gender || '',
           username: student.username || ''
         });
-        
-        // Auto-set student type from admin-assigned value
+
         if (student.student_type) {
-          const typeMap: Record<string, string> = {
-            'New': 'new',
-            'Transferee': 'transferee',
-            'Returning': 'returning',
-            'Continuing': 'continuing',
-            'Scholar': 'scholar',
-            'new': 'new',
-            'transferee': 'transferee',
-            'returning': 'returning',
-            'continuing': 'continuing',
-            'scholar': 'scholar'
-          };
-          const mappedType = typeMap[student.student_type] || student.student_type.toLowerCase();
+          const mappedType = normalizeStudentType(student.student_type);
           setStudentType(mappedType);
-          // Skip step 1 (manual selection) and go straight to step 2
           setEnrollmentStep(2);
         }
       }
-      
-      // Fetch enrollments (backend returns { success, data: [...] })
+
       const enrollmentsData = await enrollmentService.getMyEnrollments();
       const enrollmentsList = enrollmentsData?.data || [];
       setEnrollments(enrollmentsList);
 
-      // Find current enrollment (most recent non-rejected)
-      const current = enrollmentsList.find((e: any) =>
-        e.status !== 'Rejected' && e.status !== 'Enrolled'
-      ) || enrollmentsList.find((e: any) => e.status === 'Enrolled');
+      current =
+        enrollmentsList.find((e: any) => e.status !== 'Rejected' && e.status !== 'Enrolled') ||
+        enrollmentsList.find((e: any) => e.status === 'Enrolled');
       setCurrentEnrollment(current);
-      
+
+      // Load available subjects only for the student's course
+      try {
+        if (student && student.course) {
+          const subjectsResp = await subjectService.getSubjectsByCourse(student.course);
+          const subjectsList = subjectsResp?.data || [];
+          setAvailableSubjects(
+            subjectsList.map((s: any) => ({
+              code: s.subject_code,
+              name: s.subject_name,
+              instructor: 'TBA',
+              units: s.units || 0,
+              schedule: 'TBA',
+              subjectId: s.id
+            }))
+          );
+        } else {
+          // No course assigned — intentionally load no subjects for students without course
+          console.warn('Student has no course; not loading subjects for student');
+          setAvailableSubjects([]);
+        }
+      } catch (subErr) {
+        console.error('Failed to load available subjects:', subErr);
+        setAvailableSubjects([]);
+      }
+
       if (current) {
-        // Map backend statuses to frontend status
         setEnrollmentStatus(current.status || 'none');
-        
-        // Fetch enrollment details with subjects (backend returns { success, data: { enrollment, subjects } })
         const detailsResp = await enrollmentService.getEnrollmentDetails(current.id);
         const details = detailsResp?.data?.enrollment || detailsResp?.data || {};
         setEnrollmentDetails(details);
         const subjects = detailsResp?.data?.subjects || details.enrollment_subjects || [];
-        setCurrentCourses(subjects.map((es: any) => ({
-          code: es.subject_code || es.subject?.subject_code || '',
-          name: es.subject_name || es.subject?.subject_name || '',
-          instructor: es.instructor || 'TBA',
-          units: es.units || es.subject?.units || 0,
-          schedule: es.schedule || '',
-          room: es.room || '',
-          subject_id: es.subject_id || es.subject?.id
-        })));
+        setCurrentCourses(
+          subjects.map((es: any) => {
+            const firstOption = (es.schedule_options && es.schedule_options.length > 0) ? es.schedule_options[0] : null;
+            return {
+              code: es.subject_code || es.subject?.subject_code || '',
+              name: es.subject_name || es.subject?.subject_name || '',
+              instructor: es.instructor || es.schedule_instructor || es.subject?.instructor || (firstOption?.instructor) || 'TBA',
+              units: es.units || es.subject?.units || 0,
+              // prefer enrollment_subjects.schedule, then joined schedule_day_time, then first available schedule option
+              schedule: es.schedule || es.schedule_day_time || (firstOption?.day_time) || '',
+              room: es.room || es.schedule_room || (firstOption?.room) || '',
+              subject_id: es.subject_id || es.subject?.id,
+              schedule_id: es.schedule_id || null,
+              scheduleOptions: es.schedule_options || []
+            };
+          })
+        );
 
-        // Build schedule from subjects
         const scheduleList = subjects.map((es: any) => ({
           day: es.schedule?.split(' ')[0] || 'TBA',
           time: es.schedule?.split(' ').slice(1).join(' ') || 'TBA',
@@ -224,31 +285,109 @@ interface StudentDashboardProps {
         }));
         setSchedule(scheduleList);
       }
-      
-      // Fetch available subjects for the student's course when possible
+
+      // Preload assessment and payments using student_id when available
+      if (student?.student_id) {
+        try {
+          const assessmentResp = await paymentsService.getAssessment(student.student_id.toString());
+          assessmentPayload = assessmentResp?.data || assessmentResp;
+          const paymentsResp = await paymentsService.listPayments(student.student_id.toString());
+          paymentsList = paymentsResp?.data || paymentsResp || [];
+          setAssessmentData(assessmentPayload);
+          setPaymentHistory(paymentsList);
+        } catch (innerErr) {
+          console.error('Payment preload failed:', innerErr);
+        }
+      }
+
+
+    } catch (err) {
+      console.error('Failed loading student data', err);
       let subjectsResp;
       if (student && student.course) {
         subjectsResp = await subjectService.getSubjectsByCourse(student.course);
       } else {
+
+  
         subjectsResp = await subjectService.getAllSubjects();
       }
 
       const subjectsList = subjectsResp?.data || [];
-      setAvailableSubjects(subjectsList.map((s: any) => ({
-        code: s.subject_code,
-        name: s.subject_name,
-        instructor: 'TBA',
-        units: s.units || 0,
-        schedule: 'TBA',
-        subjectId: s.id
-      })));
-      
-    } catch (error: any) {
-      console.error('Error fetching student data:', error);
+      setAvailableSubjects(
+        subjectsList.map((s: any) => ({
+          code: s.subject_code,
+          name: s.subject_name,
+          instructor: 'TBA',
+          units: s.units || 0,
+          schedule: 'TBA',
+          subjectId: s.id
+        }))
+      );
+
+      rebuildNotifications(current?.status || 'none', assessmentPayload, paymentsList, current);
     } finally {
       setLoading(false);
     }
   };
+
+    const fetchNotifications = async () => {
+      try {
+        setNotificationsLoading(true);
+        const resp = await studentService.listNotifications();
+        const items = resp?.data || resp || [];
+
+        const notices = items.map((r: any) => {
+          const title = r.action || (r.meta && r.meta.type) || 'Activity';
+          const detail = r.description || r.message || (r.meta && JSON.stringify(r.meta)) || '';
+          const text = (title || '').toString().toLowerCase();
+          let action: string | undefined = undefined;
+          let actionType: string | undefined = undefined;
+          let enrollmentId: any = r.entity_id || (r.meta && r.meta.enrollment_id) || null;
+
+          if (text.includes('payment') || text.includes('transaction') || (r.entity_type === 'transaction')) {
+            action = 'Review payments';
+            actionType = 'payments';
+          } else if (text.includes('enroll') || r.entity_type === 'enrollment') {
+            action = 'Download form';
+            actionType = 'download';
+          } else if (text.includes('section') || detail.toLowerCase().includes('section') || r.entity_type === 'section') {
+            action = 'View schedule';
+            actionType = 'schedule';
+          } else if (text.includes('profile') || text.includes('update')) {
+            action = 'View profile';
+            actionType = 'profile';
+          }
+
+          return {
+            id: r.id,
+            title: title.toString(),
+            detail: detail.toString(),
+            ts: r.created_at || r.ts,
+            is_read: r.is_read,
+            action,
+            actionType,
+            enrollmentId
+          };
+        });
+
+        setNotifications(notices);
+        setHasNewNotification(notices.some((n: any) => !n.is_read));
+      } catch (err) {
+        console.error('Failed fetching notifications', err);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    };
+
+    const markNotificationRead = async (id: number | string) => {
+      try {
+        await studentService.markNotificationRead(id as any);
+        setNotifications(prev => prev.map((n: any) => n.id === Number(id) ? { ...n, is_read: true } : n));
+        setHasNewNotification(notifications.some((n: any) => !n.is_read));
+      } catch (err) {
+        console.error('Failed marking notification read', err);
+      }
+    };
 
   const stats = [
     { 
@@ -391,11 +530,17 @@ interface StudentDashboardProps {
       const details = detailsResp?.data?.enrollment || detailsResp?.data || {};
       setEnrollmentDetails(details);
       const subjects = detailsResp?.data?.subjects || details.enrollment_subjects || [];
-      setCurrentCourses(subjects.map((es: any) => ({
-        code: es.subject_code || es.subject?.subject_code || '',
-        name: es.subject_name || es.subject?.subject_name || '',
-        units: es.units || es.subject?.units || 0,
-      })));
+      setCurrentCourses(subjects.map((es: any) => {
+        const firstOption = (es.schedule_options && es.schedule_options.length > 0) ? es.schedule_options[0] : null;
+        return {
+          code: es.subject_code || es.subject?.subject_code || '',
+          name: es.subject_name || es.subject?.subject_name || '',
+          units: es.units || es.subject?.units || 0,
+          instructor: es.instructor || es.schedule_instructor || es.subject?.instructor || (firstOption?.instructor) || 'TBA',
+          schedule: es.schedule || es.schedule_day_time || (firstOption?.day_time) || '',
+          room: es.room || es.schedule_room || (firstOption?.room) || ''
+        };
+      }));
       setAssessmentOpen(true);
     } catch (err: any) {
       console.error('Failed to load assessment details:', err);
@@ -426,6 +571,44 @@ interface StudentDashboardProps {
     }
   };
 
+  const openScheduleSelector = async (subject: any) => {
+    if (!currentEnrollment) return;
+    try {
+      const resp = await subjectService.getSchedules(subject.subjectId);
+      const list = resp?.data || [];
+      if (list.length === 0) {
+        // no schedules, add directly
+        await enrollmentService.addSubject(currentEnrollment.id, subject.subjectId);
+        await fetchStudentData();
+        return;
+      }
+      setScheduleOptions(list);
+      setSchedulingSubject(subject);
+      setSelectedScheduleForAdd(list[0]?.id || null);
+      setScheduleModalOpen(true);
+    } catch (err: any) {
+      console.error('Failed to fetch schedules', err);
+      // fallback: add without schedule
+      await enrollmentService.addSubject(currentEnrollment.id, subject.subjectId);
+      await fetchStudentData();
+    }
+  };
+
+  const confirmAddWithSchedule = async () => {
+    if (!schedulingSubject || !currentEnrollment) return;
+    try {
+      setLoading(true);
+      await enrollmentService.addSubject(currentEnrollment.id, schedulingSubject.subjectId, undefined, undefined, undefined, selectedScheduleForAdd || undefined);
+      setScheduleModalOpen(false);
+      setSchedulingSubject(null);
+      await fetchStudentData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add subject with schedule');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRemoveSubject = async (subjectId: number) => {
     if (!currentEnrollment) return;
     
@@ -439,6 +622,9 @@ interface StudentDashboardProps {
 
   const handleViewNotification = () => {
     setShowNotification(true);
+    // mark unread notifications as read when opening
+    const unread = notifications.filter((n: any) => !n.is_read).map((n: any) => n.id);
+    unread.forEach(id => { markNotificationRead(id); });
     setHasNewNotification(false);
   };
 
@@ -836,12 +1022,24 @@ interface StudentDashboardProps {
                           <span className="text-slate-900 font-medium">{course.name}</span>
                         </div>
                         <p className="text-sm text-slate-500">Instructor: {course.instructor}</p>
-                        {course.schedule && (
-                          <p className="text-sm text-slate-500">Schedule: {course.schedule}</p>
-                        )}
-                        {course.room && (
-                          <p className="text-sm text-slate-500">Room: {course.room}</p>
-                        )}
+                        {/* Prefer explicit schedule on enrollment; otherwise show the first available schedule option for the subject */}
+                        {(() => {
+                          const inferred = (course.schedule && course.schedule.trim()) ? {
+                            day_time: course.schedule,
+                            room: course.room,
+                            instructor: course.instructor
+                          } : (course.scheduleOptions && course.scheduleOptions.length > 0 ? course.scheduleOptions[0] : null);
+
+                          if (inferred) {
+                            return (
+                              <>
+                                <p className="text-sm text-slate-500">Schedule: {inferred.day_time}</p>
+                                {inferred.room && <p className="text-sm text-slate-500">Room: {inferred.room}</p>}
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       <Badge variant="outline">{course.units} Units</Badge>
                     </div>
@@ -923,9 +1121,9 @@ interface StudentDashboardProps {
           {/* Student Type Display (auto-set by admin) */}
           {enrollmentStep === 1 && (
             <div className="space-y-4">
-              {studentProfile?.student_type ? (
+              {resolvedStudentType ? (
                 <Alert className="bg-blue-50 border-blue-200">
-                  <AlertTitle className="text-blue-900">Student Type: {studentProfile.student_type}</AlertTitle>
+                  <AlertTitle className="text-blue-900">Student Type: {studentProfile?.student_type || enrollmentDetails?.student_type || currentEnrollment?.student_type}</AlertTitle>
                   <AlertDescription className="text-blue-700">
                     Your enrollment type has been set by the administrator. Click Continue to proceed.
                   </AlertDescription>
@@ -948,12 +1146,12 @@ interface StudentDashboardProps {
                 </div>
               )}
 
-              {studentType && (
+              {(resolvedStudentType || studentType) && (
                 <Button 
                   onClick={() => setEnrollmentStep(2)}
                   className="bg-gradient-to-r from-blue-600 to-indigo-600"
                 >
-                  {studentProfile?.student_type ? 'Continue' : 'Next'}
+                  {resolvedStudentType ? 'Continue' : 'Next'}
                 </Button>
               )}
             </div>
@@ -1266,7 +1464,7 @@ interface StudentDashboardProps {
                             <Button 
                               size="sm"
                               className="bg-gradient-to-r from-blue-600 to-indigo-600"
-                              onClick={() => handleAddSubject(subject.subjectId)}
+                              onClick={() => openScheduleSelector(subject)}
                             >
                               Add Subject
                             </Button>
@@ -1316,6 +1514,30 @@ interface StudentDashboardProps {
             </div>
           )}
         </Card>
+        {scheduleModalOpen && schedulingSubject && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
+            <div className="bg-white p-6 rounded shadow-lg w-[520px]">
+              <h3 className="text-lg mb-3">Select Schedule for {schedulingSubject.name}</h3>
+              <div className="space-y-2 max-h-64 overflow-auto mb-4">
+                {scheduleOptions.map((sch: any) => (
+                  <div key={sch.id} className="p-2 border rounded flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{sch.day_time}</div>
+                      <div className="text-xs text-slate-500">{sch.room || 'Room TBA'} • {sch.instructor || 'Instructor TBA'}</div>
+                    </div>
+                    <div>
+                      <input type="radio" name="selectedSchedule" checked={selectedScheduleForAdd === sch.id} onChange={() => setSelectedScheduleForAdd(sch.id)} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setScheduleModalOpen(false); setSchedulingSubject(null); }}>Cancel</Button>
+                <Button onClick={confirmAddWithSchedule}>Confirm</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1748,8 +1970,8 @@ interface StudentDashboardProps {
                   </button>
                 )}
                 <div className="text-right">
-                  <p className="text-xs text-slate-600">Student ID: 2024-0001</p>
-                  <p className="text-xs text-slate-500">BSIT - 2nd Year</p>
+                  <p className="text-xs text-slate-600">Student ID: {studentProfile?.student_id || 'N/A'}</p>
+                  <p className="text-xs text-slate-500">{(studentProfile?.course ? `${studentProfile.course} - ` : '') + (studentProfile?.year_level ? `${studentProfile.year_level}${getOrdinalSuffix(studentProfile.year_level)} Year` : '')}</p>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
                   <User className="h-5 w-5 text-white" />
@@ -1810,9 +2032,11 @@ interface StudentDashboardProps {
                                 if (notice.actionType === 'payments') {
                                   openPaymentsModal();
                                 } else if (notice.actionType === 'download') {
-                                  handleDownloadEnrollmentForm();
+                                  handleDownloadEnrollmentForm(notice.enrollmentId);
                                 } else if (notice.actionType === 'schedule') {
                                   setActiveSection('My Schedule');
+                                } else if (notice.actionType === 'profile') {
+                                  setActiveSection('My Profile');
                                 }
                                 setShowNotification(false);
                               }}

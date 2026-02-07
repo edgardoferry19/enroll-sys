@@ -919,10 +919,8 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
-              Registrar Dashboard
-            </h1>
-            <p className="text-slate-600">Student records and academic documentation</p>
+            <h1 className="text-2xl mb-1">Registrar Dashboard</h1>
+            <p className="text-sm text-slate-600">Student records and academic documentation</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-xl shadow-md">

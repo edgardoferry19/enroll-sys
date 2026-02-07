@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getAllSubjects,
   getSubjectById,
+  getSchedulesForSubject,
   createSubject,
   updateSubject,
   deleteSubject,
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.get('/', authenticate, getAllSubjects);
 router.get('/course/:course', authenticate, getSubjectsByCourse);
+router.get('/:id/schedules', authenticate, getSchedulesForSubject);
 router.get('/:id', authenticate, getSubjectById);
 router.post('/', authenticate, authorize('admin', 'superadmin', 'dean'), createSubject);
 router.put('/:id', authenticate, authorize('admin', 'superadmin', 'dean'), updateSubject);

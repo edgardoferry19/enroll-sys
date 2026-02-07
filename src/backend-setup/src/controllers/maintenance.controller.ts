@@ -389,3 +389,115 @@ export const deleteSubject = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+// Subject Schedules Management
+export const getSubjectSchedules = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // subject id
+    const schedules = await query(
+      'SELECT * FROM subject_schedules WHERE subject_id = ? AND is_active = 1 ORDER BY id',
+      [id]
+    );
+
+    res.json({ success: true, data: schedules });
+  } catch (error) {
+    console.error('Get subject schedules error:', error);
+    // If the schedules table is missing (older DB), return empty list instead of 500
+    const msg = String((error as any)?.message ?? error ?? '').toLowerCase();
+    if (msg.includes('no such table') || msg.includes('no such column')) {
+      return res.json({ success: true, data: [] });
+    }
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const createSubjectSchedule = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // subject id
+    const { day_time, room, instructor, capacity } = req.body;
+    try {
+      const result = await run(
+        `INSERT INTO subject_schedules (subject_id, day_time, room, instructor, capacity) VALUES (?, ?, ?, ?, ?)`,
+        [id, day_time, room || null, instructor || null, capacity || 0]
+      );
+
+      return res.status(201).json({ success: true, message: 'Schedule created', data: { id: result.lastInsertRowid } });
+    } catch (innerErr) {
+      console.error('Insert schedule failed, attempting to create table if missing:', innerErr);
+      const msg = String((innerErr as any)?.message ?? innerErr ?? '').toLowerCase();
+      if (msg.includes('no such table') || msg.includes('no such column')) {
+        // create the table and retry
+        try {
+          await run(`
+            CREATE TABLE IF NOT EXISTS subject_schedules (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              subject_id INTEGER NOT NULL,
+              day_time TEXT NOT NULL,
+              room TEXT,
+              instructor TEXT,
+              capacity INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              created_at TEXT DEFAULT (datetime('now')),
+              updated_at TEXT DEFAULT (datetime('now')),
+              FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+            )
+          `);
+          // retry insert
+          const retry = await run(
+            `INSERT INTO subject_schedules (subject_id, day_time, room, instructor, capacity) VALUES (?, ?, ?, ?, ?)`,
+            [id, day_time, room || null, instructor || null, capacity || 0]
+          );
+          return res.status(201).json({ success: true, message: 'Schedule created', data: { id: retry.lastInsertRowid } });
+        } catch (retryErr) {
+          console.error('Retry insert after creating table failed:', retryErr);
+          return res.status(500).json({ success: false, message: 'Server error' });
+        }
+      }
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+  } catch (error) {
+    console.error('Create schedule error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const updateSubjectSchedule = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // schedule id
+    const { day_time, room, instructor, capacity, is_active } = req.body;
+
+    await run(
+      `UPDATE subject_schedules SET day_time = ?, room = ?, instructor = ?, capacity = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`,
+      [day_time, room || null, instructor || null, capacity || 0, is_active ? 1 : 0, id]
+    );
+
+    res.json({ success: true, message: 'Schedule updated' });
+  } catch (error) {
+    console.error('Update schedule error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+export const deleteSubjectSchedule = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params; // schedule id
+    // Soft-delete: mark as inactive
+    await run('UPDATE subject_schedules SET is_active = 0, updated_at = datetime(\'now\') WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Schedule removed' });
+  } catch (error) {
+    console.error('Delete schedule error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Debug: list all subject schedules
+export const getAllSchedules = async (req: AuthRequest, res: Response) => {
+  try {
+    const schedules = await query('SELECT * FROM subject_schedules ORDER BY subject_id, id');
+    res.json({ success: true, data: schedules });
+  } catch (error) {
+    console.error('Get all schedules error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

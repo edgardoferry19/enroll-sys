@@ -48,6 +48,15 @@ class SubjectService {
     }
   }
 
+  async getSchedules(id: number): Promise<any> {
+    try {
+      const response = await api.get(`/subjects/${id}/schedules`);
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   /**
    * Create new subject (admin/dean only)
    */

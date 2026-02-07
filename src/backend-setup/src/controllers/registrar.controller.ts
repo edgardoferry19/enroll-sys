@@ -470,11 +470,11 @@ export const getEnrollmentReport = async (req: AuthRequest, res: Response) => {
 
     // Number of students per section
     const perSection = await query(
-      `SELECT sec.id as section_id, sec.name as section_name, COUNT(e.id) as total
+      `SELECT sec.id as section_id, sec.section_name as section_name, COUNT(e.id) as total
        FROM enrollments e
        LEFT JOIN sections sec ON e.section_id = sec.id
        WHERE e.status = 'Enrolled'
-       GROUP BY sec.id, sec.name`);
+       GROUP BY sec.id, sec.section_name`);
 
     // Pending enrollments
     const pending = await query(`SELECT COUNT(*) as total FROM enrollments WHERE status != 'Enrolled'`);

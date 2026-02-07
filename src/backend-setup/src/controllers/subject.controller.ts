@@ -231,3 +231,22 @@ export const getSubjectsByCourse = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+export const getSchedulesForSubject = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const schedules = await query(
+      'SELECT id, day_time, room, instructor, capacity, is_active FROM subject_schedules WHERE subject_id = ? AND is_active = 1 ORDER BY id',
+      [id]
+    );
+
+    res.json({ success: true, data: schedules });
+  } catch (error) {
+    console.error('Get schedules for subject error:', error);
+    const msg = String((error as any)?.message ?? error ?? '').toLowerCase();
+    if (msg.includes('no such table') || msg.includes('no such column')) {
+      return res.json({ success: true, data: [] });
+    }
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

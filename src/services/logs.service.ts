@@ -1,7 +1,7 @@
 import api from '../utils/api';
 
-export const listLogs = async () => {
-  const res = await api.get('/logs');
+export const listLogs = async (params?: { page?: number; limit?: number; q?: string; since?: string }) => {
+  const res = await api.get('/logs', { params });
   return res.data;
 };
 
