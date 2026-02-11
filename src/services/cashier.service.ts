@@ -45,6 +45,24 @@ class CashierService {
       throw new Error(handleApiError(error));
     }
   }
+
+  async getTuitionAssessments() {
+    try {
+      const res = await api.get('/cashier/assessments');
+      return res.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  async approveAssessment(enrollmentId: number | string) {
+    try {
+      const res = await api.put(`/cashier/enrollments/${enrollmentId}/approve-assessment`);
+      return res.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
 }
 
 export const cashierService = new CashierService();

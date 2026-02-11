@@ -8,7 +8,6 @@ import { cashierService } from '../services/cashier.service';
 import { 
   Loader2, 
   LogOut, 
-  DollarSign, 
   LayoutDashboard,
   CheckCircle,
   XCircle,
@@ -27,6 +26,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import React from 'react';
+
+const PesoIcon = (props: any) => (
+  <span {...props} className={(props.className || '') + ' inline-flex items-center'}>₱</span>
+);
 import api from '../utils/api';
 
 interface CashierDashboardProps {
@@ -45,6 +49,10 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
   const [expandedTx, setExpandedTx] = useState<number | null>(null);
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [assessments, setAssessments] = useState<any[]>([]);
+  const [loadingAssessments, setLoadingAssessments] = useState(false);
+  const [pendingTransactions, setPendingTransactions] = useState<any[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
 
   const loadTransactions = async () => {
     try {
@@ -78,6 +86,44 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
   };
 
   useEffect(() => { loadTransactions(); }, [filters]);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (activeSection !== 'Tuition Assessments') return;
+      try {
+        setLoadingAssessments(true);
+        const resp = await cashierService.getTuitionAssessments();
+        if (!mounted) return;
+        setAssessments(resp?.data || resp || []);
+      } catch (err) {
+        console.error('Failed loading assessments', err);
+      } finally {
+        if (mounted) setLoadingAssessments(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [activeSection]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPending = async () => {
+      if (activeSection !== 'Pending Verifications') return;
+      try {
+        setLoadingPending(true);
+        const resp = await cashierService.listPending();
+        if (!mounted) return;
+        setPendingTransactions(resp?.data || resp || []);
+      } catch (err) {
+        console.error('Failed loading pending transactions', err);
+      } finally {
+        if (mounted) setLoadingPending(false);
+      }
+    };
+    loadPending();
+    return () => { mounted = false; };
+  }, [activeSection]);
 
   const handleProcess = async (txId: number, action: 'complete' | 'reject') => {
     try {
@@ -133,11 +179,13 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
-    { name: 'Transactions', icon: Clock },
+    { name: 'Tuition Assessments', icon: FileText },
+    { name: 'Pending Verifications', icon: Clock },
+    { name: 'Transaction Logs', icon: FileText },
   ];
 
   const statCards = [
-    { label: 'Total Collections', value: `₱${analytics.totalCollections.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: DollarSign, color: 'from-green-500 to-green-600' },
+    { label: 'Total Collections', value: `₱${analytics.totalCollections.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: PesoIcon, color: 'from-green-500 to-green-600' },
     { label: 'Outstanding Balances', value: `₱${analytics.outstandingBalances.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: AlertCircle, color: 'from-orange-500 to-orange-600' },
     { label: 'Pending Transactions', value: (analytics.pendingCount || stats.pending).toString(), icon: Clock, color: 'from-amber-500 to-amber-600' },
     { label: 'Logged Transactions', value: allTransactions.length.toString(), icon: FileText, color: 'from-purple-500 to-purple-600' },
@@ -246,11 +294,17 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
               <option value="Rejected">Rejected</option>
               <option value="">All</option>
             </select>
-            <Input
-              placeholder="School Year (e.g., 2024-2025)"
+            <select
+              className="border rounded-md px-3 py-2 text-sm"
               value={filters.school_year}
               onChange={(e) => updateFilter('school_year', e.target.value)}
-            />
+            >
+              <option value="">All Years</option>
+              <option value="2023-2024">2023-2024</option>
+              <option value="2024-2025">2024-2025</option>
+              <option value="2025-2026">2025-2026</option>
+              <option value="2026-2027">2026-2027</option>
+            </select>
             <select
               className="border rounded-md px-3 py-2 text-sm"
               value={filters.semester}
@@ -275,8 +329,8 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <DollarSign className="h-5 w-5 text-blue-600" />
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <PesoIcon className="h-5 w-5 text-blue-600" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -360,7 +414,7 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
                         {/* Assessment Breakdown */}
                         <div>
                           <h5 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
-                            <DollarSign className="h-4 w-4" />
+                            <PesoIcon className="h-4 w-4" />
                             Assessment Breakdown
                           </h5>
                           <div className="space-y-2 text-sm bg-slate-50 rounded-lg p-3">
@@ -447,6 +501,147 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
     );
   };
 
+  const renderTuitionAssessmentsContent = () => {
+    if (loadingAssessments) return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+
+    return (
+      <Card className="border-0 shadow-lg">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Tuition Assessments</h3>
+            <p className="text-sm text-slate-500">Review system-generated tuition assessments and approve.</p>
+          </div>
+
+          {assessments.length === 0 ? (
+            <p className="text-sm text-slate-500">No assessments awaiting cashier review.</p>
+          ) : (
+            <div className="space-y-3">
+              {assessments.map((a: any) => (
+                <div key={a.id} className="border rounded-lg p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{a.student_name} • {a.student_id}</p>
+                    <p className="text-xs text-slate-500">{a.course} • Year {a.year_level} • {a.school_year} {a.semester}</p>
+                    <p className="text-sm text-slate-700">Total: ₱{(a.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={async () => {
+                      if (!confirm('Approve this tuition assessment and mark Ready for Payment?')) return;
+                      try {
+                        await cashierService.approveAssessment(a.id);
+                        alert('Assessment approved');
+                        // refresh list
+                        const resp = await cashierService.getTuitionAssessments();
+                        setAssessments(resp?.data || resp || []);
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to approve assessment');
+                      }
+                    }}>
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  };
+
+  const renderPendingVerificationsContent = () => {
+    if (loadingPending) return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+
+    const refreshPending = async () => {
+      try {
+        setLoadingPending(true);
+        const resp = await cashierService.listPending();
+        setPendingTransactions(resp?.data || resp || []);
+      } catch (err) {
+        console.error('Failed refreshing pending', err);
+      } finally {
+        setLoadingPending(false);
+      }
+    };
+
+    return (
+      <Card className="border-0 shadow-lg">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Pending Verifications</h3>
+            <p className="text-sm text-slate-500">Payments uploaded by students and awaiting cashier verification.</p>
+          </div>
+
+          {pendingTransactions.length === 0 ? (
+            <p className="text-sm text-slate-500">No pending payments for verification.</p>
+          ) : (
+            <div className="space-y-3">
+              {pendingTransactions.map((pt: any) => (
+                <div key={pt.id} className="border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{pt.student_name} • {pt.student_id}</p>
+                      <p className="text-xs text-slate-500">{pt.course} • Year {pt.year_level} • {pt.school_year} {pt.semester}</p>
+                      <p className="text-sm text-slate-700 mt-2">Amount: ₱{(pt.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-xs text-slate-500">Outstanding: ₱{(pt.outstanding_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {pt.receipt_path ? (
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadReceipt(pt.receipt_path, pt.receipt_filename || 'receipt') }>
+                          <Download className="h-4 w-4 mr-2" />
+                          Download Receipt
+                        </Button>
+                      ) : (
+                        <p className="text-xs italic text-slate-400">No receipt uploaded</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button variant="destructive" size="sm" onClick={async () => {
+                          if (!confirm('Reject this payment?')) return;
+                          try {
+                            await cashierService.process(pt.id, 'reject', 'Rejected by cashier');
+                            alert('Payment rejected');
+                            await refreshPending();
+                            await loadTransactions();
+                          } catch (err: any) {
+                            alert(err.message || 'Failed to reject payment');
+                          }
+                        }}>
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Reject
+                        </Button>
+                        <Button size="sm" onClick={async () => {
+                          if (!confirm('Approve this payment?')) return;
+                          try {
+                            await cashierService.process(pt.id, 'complete', 'Approved by cashier');
+                            alert('Payment approved');
+                            await refreshPending();
+                            await loadTransactions();
+                          } catch (err: any) {
+                            alert(err.message || 'Failed to approve payment');
+                          }
+                        }}>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
       <div className="max-w-[1600px] mx-auto">
@@ -458,8 +653,8 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-xl shadow-md">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white">
-                <DollarSign className="h-5 w-5" />
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white">
+                <PesoIcon className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-900">Cashier</p>
@@ -519,7 +714,9 @@ export default function CashierDashboard({ onLogout }: CashierDashboardProps) {
           {/* Content Area */}
           <div className="col-span-9">
             {activeSection === 'Dashboard' && renderDashboardContent()}
-            {activeSection === 'Transactions' && renderTransactionsContent()}
+            {activeSection === 'Tuition Assessments' && renderTuitionAssessmentsContent()}
+            {activeSection === 'Pending Verifications' && renderPendingVerificationsContent()}
+            {activeSection === 'Transaction Logs' && renderTransactionsContent()}
           </div>
         </div>
       </div>

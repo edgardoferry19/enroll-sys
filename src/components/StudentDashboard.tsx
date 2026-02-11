@@ -1623,6 +1623,66 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     );
   };
 
+  const renderTuitionFeesContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Card className="border-0 shadow-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-3">Tuition and Fees</h3>
+          <div className="text-sm text-slate-700 mb-4">
+            <div className="flex justify-between"><span>Total Assessment</span><span>₱{(assessmentData?.total || assessmentData?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+            <div className="flex justify-between"><span>Amount Due</span><span>₱{(assessmentData?.due || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+          </div>
+
+          {currentEnrollment ? (
+            (currentEnrollment.status === 'Ready for Payment' || currentEnrollment.status === 'For Payment') ? (
+              <PaymentForm 
+                enrollment={currentEnrollment}
+                onViewAssessment={() => openAssessmentModal(currentEnrollment.id)}
+                loadingAssessment={loadingAssessment}
+                onSubmit={handleSubmitPayment}
+                loading={loading}
+              />
+            ) : (
+              <div className="text-sm text-slate-600">
+                <p>Current enrollment status: <strong>{currentEnrollment.status}</strong></p>
+                <p className="mt-2">If your assessment is approved and marked Ready for Payment, you will be able to upload a payment receipt here.</p>
+              </div>
+            )
+          ) : (
+            <p className="text-sm text-slate-500">No active enrollment found.</p>
+          )}
+        </Card>
+
+        <Card className="border-0 shadow-lg p-6">
+          <h4 className="text-lg font-medium mb-3">Payment History</h4>
+          {paymentHistory.length === 0 ? (
+            <p className="text-sm text-slate-500">No payments found</p>
+          ) : (
+            <div className="space-y-2 text-sm">
+              {paymentHistory.map((p: any) => (
+                <div key={p.id} className="flex justify-between border rounded p-2">
+                  <div>
+                    <div className="font-medium">{p.method || p.reference || 'Payment'}</div>
+                    <div className="text-xs text-slate-500">{new Date(p.ts).toLocaleString()}</div>
+                  </div>
+                  <div className="font-medium">₱{(p.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  };
+
   const renderProfileContent = () => {
     if (loading || !studentProfile) {
       return (
@@ -1906,6 +1966,17 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
               <BookOpen className="h-4 w-4" />
               Subjects
             </button>
+            <button
+              onClick={() => setActiveSection('Tuition and Fees')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
+                activeSection === 'Tuition and Fees' 
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg' 
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span className="h-4 w-4 flex items-center text-sm">₱</span>
+              Tuition and Fees
+            </button>
 
             <button
               onClick={() => setActiveSection('My Schedule')}
@@ -2005,6 +2076,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             {activeSection === 'Subjects' && renderSubjectsContent()}
             {activeSection === 'My Schedule' && renderScheduleContent()}
             {activeSection === 'My Profile' && renderProfileContent()}
+            {activeSection === 'Tuition and Fees' && renderTuitionFeesContent()}
             {/* Notifications Modal */}
             <Dialog open={showNotification} onOpenChange={setShowNotification}>
               <DialogContent className="max-w-md">
