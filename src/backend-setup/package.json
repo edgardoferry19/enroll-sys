@@ -4,7 +4,7 @@
   "description": "Backend API for Informatics College Enrollment System",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:setup": "ts-node src/database/setup.ts",
@@ -33,6 +33,7 @@
     "@types/better-sqlite3": "^7.6.8",
     "typescript": "^5.3.3",
     "nodemon": "^3.0.2",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0"
   }
 }
