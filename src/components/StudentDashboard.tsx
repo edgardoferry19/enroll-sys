@@ -22,6 +22,7 @@ import { enrollmentService } from '../services/enrollment.service';
 import { studentService } from '../services/student.service';
 import { subjectService } from '../services/subject.service';
 import paymentsService from '../services/payments.service';
+import { gradesService } from '../services/grades.service';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -94,6 +95,8 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     newPassword: '',
     confirmPassword: ''
   });
+  const [grades, setGrades] = useState<any[]>([]);
+  const [loadingGrades, setLoadingGrades] = useState(false);
 
   const normalizeStudentType = (raw?: string) => {
     if (!raw) return '';
@@ -176,6 +179,28 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     fetchNotifications();
     return () => clearInterval(poll);
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadGrades = async () => {
+      if (activeSection !== 'Grades') return;
+      try {
+        setLoadingGrades(true);
+        const sid = studentProfile?.student_id;
+        if (!sid) return;
+        const resp = await gradesService.getStudentGrades(sid.toString());
+        if (!mounted) return;
+        setGrades(resp?.data || resp || []);
+      } catch (err) {
+        console.error('Failed to load grades', err);
+        setGrades([]);
+      } finally {
+        if (mounted) setLoadingGrades(false);
+      }
+    };
+    loadGrades();
+    return () => { mounted = false; };
+  }, [activeSection, studentProfile]);
 
   const resolvedStudentType = normalizeStudentType(
     studentProfile?.student_type || enrollmentDetails?.student_type || currentEnrollment?.student_type
@@ -1542,6 +1567,34 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
     );
   };
 
+  const renderGradesContent = () => {
+    return (
+      <Card className="border-0 shadow-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Grades</h3>
+        {loadingGrades ? (
+          <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : grades.length === 0 ? (
+          <p className="text-sm text-slate-500">No grades available.</p>
+        ) : (
+          <div className="space-y-3">
+            {grades.map((g: any, i: number) => (
+              <div key={i} className="p-3 border rounded-lg flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{g.subject_code} — {g.subject_name}</div>
+                  <div className="text-xs text-slate-500">{g.school_year} • {g.semester}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold">{g.grade ?? 'N/A'}</div>
+                  <div className="text-xs text-slate-400">{g.status || ''}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   const renderScheduleContent = () => {
     if (loading) {
       return (
@@ -1990,6 +2043,18 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
               My Schedule
             </button>
 
+              <button
+                onClick={() => setActiveSection('Grades')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
+                  activeSection === 'Grades'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <GraduationCap className="h-4 w-4" />
+                Grades
+              </button>
+
             <button
               onClick={() => setActiveSection('My Profile')}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
@@ -2077,6 +2142,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             {activeSection === 'My Schedule' && renderScheduleContent()}
             {activeSection === 'My Profile' && renderProfileContent()}
             {activeSection === 'Tuition and Fees' && renderTuitionFeesContent()}
+            {activeSection === 'Grades' && renderGradesContent && renderGradesContent()}
             {/* Notifications Modal */}
             <Dialog open={showNotification} onOpenChange={setShowNotification}>
               <DialogContent className="max-w-md">

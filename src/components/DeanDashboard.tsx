@@ -87,6 +87,7 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
   const [forDeanEnrollments, setForDeanEnrollments] = useState<any[]>([]);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [analyticsSummary, setAnalyticsSummary] = useState<any>(null);
+  const [approvalView, setApprovalView] = useState<'Enrollments' | 'Curriculum' | 'Grades'>('Enrollments');
 
   const [newFacultyForm, setNewFacultyForm] = useState({
     faculty_id: '',
@@ -1104,33 +1105,50 @@ export default function DeanDashboard({ onLogout }: DeanDashboardProps) {
         )}
 
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">Enrollment Approval Requests</h3>
-          <div>
-            <Button variant="outline" onClick={fetchForDeanEnrollments}>Refresh</Button>
-            <Button variant="outline" className="ml-2" onClick={() => setGradesDialogOpen(true)}>Grades Review</Button>
+          <h3 className="text-lg font-medium">Approval Requests</h3>
+          <div className="flex items-center gap-2">
+            <Button variant={approvalView === 'Enrollments' ? 'default' : 'outline'} onClick={() => { setApprovalView('Enrollments'); fetchForDeanEnrollments(); }}>Enrollments</Button>
+            <Button variant={approvalView === 'Curriculum' ? 'default' : 'outline'} onClick={() => setApprovalView('Curriculum')}>Curriculum Updates</Button>
+            <Button variant={approvalView === 'Grades' ? 'default' : 'outline'} onClick={() => { setApprovalView('Grades'); setGradesDialogOpen(true); }}>Grades</Button>
           </div>
         </div>
 
         <Card className="border-0 shadow-lg">
           <ScrollArea className="h-[500px]">
             <div className="p-4">
-              {forDeanEnrollments.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">No enrollments pending dean approval</p>
-              ) : (
-                <div className="space-y-3">
-                  {forDeanEnrollments.map((enr) => (
-                    <div key={enr.id} className="p-3 bg-slate-50 rounded-lg flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{enr.first_name} {enr.last_name} — {enr.course || enr.program_name}</p>
-                        <p className="text-xs text-slate-500">Submitted: {new Date(enr.created_at).toLocaleString()}</p>
+              {approvalView === 'Enrollments' && (
+                (forDeanEnrollments.length === 0) ? (
+                  <p className="text-center text-slate-500 py-8">No enrollments pending dean approval</p>
+                ) : (
+                  <div className="space-y-3">
+                    {forDeanEnrollments.map((enr) => (
+                      <div key={enr.id} className="p-3 bg-slate-50 rounded-lg flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{enr.first_name} {enr.last_name} — {enr.course || enr.program_name}</p>
+                          <p className="text-xs text-slate-500">Submitted: {new Date(enr.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleApproveSubjects(enr.id)} disabled={approvingId === enr.id}>
+                            {approvingId === enr.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleApproveSubjects(enr.id)} disabled={approvingId === enr.id}>
-                          {approvingId === enr.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )
+              )}
+
+              {approvalView === 'Curriculum' && (
+                <div>
+                  <p className="text-sm text-slate-600 mb-4">Curriculum updates awaiting approval will appear here.</p>
+                  <p className="text-sm text-slate-500">(No pending curriculum updates in this demo.)</p>
+                </div>
+              )}
+
+              {approvalView === 'Grades' && (
+                <div>
+                  <p className="text-sm text-slate-600 mb-4">Open Grades Review to load submitted grades for approval.</p>
+                  <Button onClick={() => setGradesDialogOpen(true)}>Open Grades Review</Button>
                 </div>
               )}
             </div>
