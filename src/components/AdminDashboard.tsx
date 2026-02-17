@@ -27,6 +27,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { adminService } from '../services/admin.service';
+import { enrollmentService } from '../services/enrollment.service';
 import { transactionService } from '../services/transaction.service';
 import { studentService } from '../services/student.service';
 import { facultyService } from '../services/faculty.service';
@@ -167,6 +168,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [viewGradesOpen, setViewGradesOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [addSchoolYearOpen, setAddSchoolYearOpen] = useState(false);
   const [editSectionOpen, setEditSectionOpen] = useState(false);
   const [removeSectionOpen, setRemoveSectionOpen] = useState(false);
   const [addSubjectOpen, setAddSubjectOpen] = useState(false);
@@ -174,6 +176,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [removeSubjectOpen, setRemoveSubjectOpen] = useState(false);
   const [editSchoolYearOpen, setEditSchoolYearOpen] = useState(false);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('2024-2025');
+  const [selectedSemester, setSelectedSemester] = useState('1st');
   const [editGradesOpen, setEditGradesOpen] = useState(false);
   const [updateStudentOpen, setUpdateStudentOpen] = useState(false);
   const [editEnrollmentOpen, setEditEnrollmentOpen] = useState(false);
@@ -217,6 +220,11 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [loadingSection, setLoadingSection] = useState<string | null>(null);
   const [error, setError] = useState<string>('');
 
+  // Role label helpers: switch text between Faculty and Teacher based on active section
+  const isFacultySection = activeSection === 'Manage Faculty';
+  const personSingular = isFacultySection ? 'Faculty' : 'Teacher';
+  const personPlural = isFacultySection ? 'Faculty' : 'Teachers';
+
   // Form state for dialogs
   const [newStudentForm, setNewStudentForm] = useState({
     student_id: '',
@@ -247,7 +255,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         console.error('Failed to load templates', err);
       }
     })();
-  }, [activeSection]);
+  }, [activeSection, selectedSchoolYear, selectedSemester]);
 
   const fetchDashboardData = async () => {
     try {
@@ -424,9 +432,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         // Fetch grades for first student as example - in real app, would fetch all
         if (shsStudents[0]) {
           const gradesData = await gradesService.getStudentGrades(shsStudents[0].id, { subject_type: 'SHS' });
-          if (gradesData.success) {
-            setShsGrades(gradesData.data || []);
-          }
+          setShsGrades(gradesData?.data || gradesData || []);
         }
       }
 
@@ -435,9 +441,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         // Fetch grades for first student as example - in real app, would fetch all
         if (collegeStudents[0]) {
           const gradesData = await gradesService.getStudentGrades(collegeStudents[0].id, { subject_type: 'College' });
-          if (gradesData.success) {
-            setCollegeGrades(gradesData.data || []);
-          }
+          setCollegeGrades(gradesData?.data || gradesData || []);
         }
       }
     } catch (error: any) {
@@ -524,6 +528,28 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       clearanceStatus: student.clearanceStatus || 'Clear'
     });
     setUpdateStudentOpen(true);
+  };
+
+  // Grades edit helpers
+  const handleAddSubject = () => {
+    if (!selectedStudent) return;
+    const grades = Array.isArray(selectedStudent.grades) ? [...selectedStudent.grades] : [];
+    grades.push({ subject: '', grade: '', enrollment_subject_id: null });
+    setSelectedStudent({ ...selectedStudent, grades });
+  };
+
+  const handleRemoveSubject = (index: number) => {
+    if (!selectedStudent) return;
+    const grades = [...(selectedStudent.grades || [])];
+    grades.splice(index, 1);
+    setSelectedStudent({ ...selectedStudent, grades });
+  };
+
+  const handleUpdateGradeField = (index: number, field: string, value: any) => {
+    if (!selectedStudent) return;
+    const grades = [...(selectedStudent.grades || [])];
+    grades[index] = { ...(grades[index] || {}), [field]: value };
+    setSelectedStudent({ ...selectedStudent, grades });
   };
 
   const handlePrintGrades = () => {
@@ -704,7 +730,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
       setError('');
       setLoadingSection('create-school-year');
       await maintenanceService.createSchoolYear(schoolYearData);
-      setAddSectionOpen(false);
+      setAddSchoolYearOpen(false);
       await fetchDashboardData();
     } catch (err: any) {
       setError(err.message || 'Failed to create school year');
@@ -1398,7 +1424,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     </div>
   );
 
-  const renderManageTeachersContent = () => {
+  const renderManageFacultyContent = () => {
     if (loading) {
       return (
         <div className="flex items-center justify-center py-12">
@@ -1417,21 +1443,21 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </div>
           </div>
         )}
-        <div className="flex items-center justify-end mb-6">
+          <div className="flex items-center justify-end mb-6">
           <div className="flex gap-2">
             <Button 
               onClick={() => setAddTeacherOpen(true)}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
             >
               <UserPlus className="h-4 w-4" />
-              Add Teacher
+              {`Add ${personSingular}`}
             </Button>
           </div>
         </div>
         <Card className="border-0 shadow-lg">
           <div className="p-6">
             {teachers.length === 0 ? (
-              <p className="text-center text-slate-500 py-8">No teachers found</p>
+              <p className="text-center text-slate-500 py-8">{`No ${personPlural.toLowerCase()} found`}</p>
             ) : (
               <div className="space-y-3">
                 {teachers.map((teacher) => (
@@ -1495,6 +1521,9 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     );
   };
 
+  // Keep a teachers render alias so 'Teachers' page remains available and distinct label is used
+  const renderManageTeachersContent = () => renderManageFacultyContent();
+
   const renderSHSGradesContent = () => {
     if (loading) {
       return (
@@ -1516,7 +1545,36 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         )}
         <Card className="border-0 shadow-lg">
           <div className="p-6">
-            <p className="text-slate-600 mb-6">View and manage SHS student grades.</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-slate-600">View and manage SHS student grades.</p>
+              <div className="flex items-center gap-3">
+                <div>
+                  <Label className="text-sm">School Year</Label>
+                  <Select value={selectedSchoolYear} onValueChange={(v) => setSelectedSchoolYear(v)}>
+                    <SelectTrigger className="w-40 mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schoolYears.map((s: any, i: number) => (
+                        <SelectItem key={i} value={s.school_year || s}>{s.school_year || s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm">Semester</Label>
+                  <Select value={selectedSemester} onValueChange={(v) => setSelectedSemester(v)}>
+                    <SelectTrigger className="w-28 mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1st">1st</SelectItem>
+                      <SelectItem value="2nd">2nd</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
             {shsStudents.length === 0 ? (
               <p className="text-center text-slate-500 py-8">No SHS students found</p>
             ) : (
@@ -1535,11 +1593,10 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                         variant="outline"
                         onClick={async () => {
                           try {
-                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS' });
-                            if (gradesData.success) {
-                              setSelectedStudent({ ...student, grades: gradesData.data });
-                              setViewGradesOpen(true);
-                            }
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS', school_year: selectedSchoolYear, semester: selectedSemester });
+                            const grades = gradesData?.data || gradesData || [];
+                            setSelectedStudent({ ...student, grades });
+                            setViewGradesOpen(true);
                           } catch (err: any) {
                             setError(err.message || 'Failed to load grades');
                           }
@@ -1553,13 +1610,39 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                         variant="outline"
                         onClick={async () => {
                           try {
-                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS' });
-                            if (gradesData.success) {
-                              setSelectedStudent({ ...student, grades: gradesData.data });
-                              setEditGradesOpen(true);
+                            // Fetch existing grades
+                            const gradesResp = await gradesService.getStudentGrades(student.id, { subject_type: 'SHS', school_year: selectedSchoolYear, semester: selectedSemester });
+                            const existingGrades = gradesResp?.data || gradesResp || [];
+
+                            // Fetch student details to locate latest enrollment
+                            const stuResp = await adminService.getStudentById(student.studentId || student.id);
+                            const stuData = stuResp?.data || stuResp || {};
+                            const latestEnrollment = (stuData.enrollments || []).slice().reverse()[0];
+
+                            let subjectsList: any[] = [];
+                            if (latestEnrollment) {
+                              const details = await enrollmentService.getEnrollmentDetails(latestEnrollment.id);
+                              const enrollmentDetails = details?.data || details || {};
+                              subjectsList = enrollmentDetails.enrollment_subjects || enrollmentDetails.subjects || [];
                             }
+
+                            // Merge existing grades with enrolled subjects
+                            const gradesMerged = (subjectsList.length > 0)
+                              ? subjectsList.map((es: any) => {
+                                  const match = existingGrades.find((g: any) => g.enrollment_subject_id === es.id || g.subject === es.subject_name || g.subject_id === es.subject_id);
+                                  return {
+                                    subject: es.subject_name || es.subject || match?.subject || '',
+                                    grade: match?.grade ?? '',
+                                    enrollment_subject_id: es.id
+                                  };
+                                })
+                              : (existingGrades.length > 0 ? existingGrades : []);
+
+                            setSelectedStudent({ ...student, grades: gradesMerged });
+                            setEditGradesOpen(true);
                           } catch (err: any) {
-                            setError(err.message || 'Failed to load grades');
+                            console.error('Failed to prepare edit grades:', err);
+                            setError(err.message || 'Failed to load grades or enrolled subjects');
                           }
                         }}
                       >
@@ -1598,7 +1681,36 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         )}
         <Card className="border-0 shadow-lg">
           <div className="p-6">
-            <p className="text-slate-600 mb-6">View and manage college student grades.</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-slate-600">View and manage college student grades.</p>
+              <div className="flex items-center gap-3">
+                <div>
+                  <Label className="text-sm">School Year</Label>
+                  <Select value={selectedSchoolYear} onValueChange={(v) => setSelectedSchoolYear(v)}>
+                    <SelectTrigger className="w-40 mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schoolYears.map((s: any, i: number) => (
+                        <SelectItem key={i} value={s.school_year || s}>{s.school_year || s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm">Semester</Label>
+                  <Select value={selectedSemester} onValueChange={(v) => setSelectedSemester(v)}>
+                    <SelectTrigger className="w-28 mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1st">1st</SelectItem>
+                      <SelectItem value="2nd">2nd</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
             {collegeStudents.length === 0 ? (
               <p className="text-center text-slate-500 py-8">No college students found</p>
             ) : (
@@ -1617,11 +1729,10 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                         variant="outline"
                         onClick={async () => {
                           try {
-                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'College' });
-                            if (gradesData.success) {
-                              setSelectedStudent({ ...student, grades: gradesData.data });
-                              setViewGradesOpen(true);
-                            }
+                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'College', school_year: selectedSchoolYear, semester: selectedSemester });
+                            const grades = gradesData?.data || gradesData || [];
+                            setSelectedStudent({ ...student, grades });
+                            setViewGradesOpen(true);
                           } catch (err: any) {
                             setError(err.message || 'Failed to load grades');
                           }
@@ -1635,13 +1746,36 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                         variant="outline"
                         onClick={async () => {
                           try {
-                            const gradesData = await gradesService.getStudentGrades(student.id, { subject_type: 'College' });
-                            if (gradesData.success) {
-                              setSelectedStudent({ ...student, grades: gradesData.data });
-                              setEditGradesOpen(true);
+                            const gradesResp = await gradesService.getStudentGrades(student.id, { subject_type: 'College' });
+                            const existingGrades = gradesResp?.data || gradesResp || [];
+
+                            const stuResp = await adminService.getStudentById(student.studentId || student.id);
+                            const stuData = stuResp?.data || stuResp || {};
+                            const latestEnrollment = (stuData.enrollments || []).slice().reverse()[0];
+
+                            let subjectsList: any[] = [];
+                            if (latestEnrollment) {
+                              const details = await enrollmentService.getEnrollmentDetails(latestEnrollment.id);
+                              const enrollmentDetails = details?.data || details || {};
+                              subjectsList = enrollmentDetails.enrollment_subjects || enrollmentDetails.subjects || [];
                             }
+
+                            const gradesMerged = (subjectsList.length > 0)
+                              ? subjectsList.map((es: any) => {
+                                  const match = existingGrades.find((g: any) => g.enrollment_subject_id === es.id || g.subject === es.subject_name || g.subject_id === es.subject_id);
+                                  return {
+                                    subject: es.subject_name || es.subject || match?.subject || '',
+                                    grade: match?.grade ?? '',
+                                    enrollment_subject_id: es.id
+                                  };
+                                })
+                              : (existingGrades.length > 0 ? existingGrades : []);
+
+                            setSelectedStudent({ ...student, grades: gradesMerged });
+                            setEditGradesOpen(true);
                           } catch (err: any) {
-                            setError(err.message || 'Failed to load grades');
+                            console.error('Failed to prepare edit grades:', err);
+                            setError(err.message || 'Failed to load grades or enrolled subjects');
                           }
                         }}
                       >
@@ -1881,7 +2015,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         )}
         <div className="flex items-center justify-end mb-6">
           <Button 
-            onClick={() => setAddSectionOpen(true)}
+            onClick={() => setAddSchoolYearOpen(true)}
             className="bg-gradient-to-r from-blue-600 to-indigo-600 gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -2029,6 +2163,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               Transactions
             </button>
 
+            {/* Faculty moved into Manage submenu; no top-level Faculty button */}
+
             <div className="pt-4">
               {/* Manage Collapsible */}
               <Collapsible open={manageOpen} onOpenChange={setManageOpen}>
@@ -2051,6 +2187,12 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                     className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
                   >
                     Teachers
+                  </button>
+                  <button 
+                    onClick={() => setActiveSection('Manage Faculty')}
+                    className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                  >
+                    Faculty
                   </button>
                   <button 
                     onClick={() => setActiveSection('SHS Grades')}
@@ -2130,6 +2272,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   {activeSection === 'Transactions' && 'Transactions'}
                   {activeSection === 'Manage Students' && 'Manage Students'}
                   {activeSection === 'Manage Teachers' && 'Manage Teachers'}
+                  {activeSection === 'Manage Faculty' && 'Manage Faculty'}
                   {activeSection === 'SHS Grades' && 'SHS Grades'}
                   {activeSection === 'College Grades' && 'College Grades'}
                   {activeSection === 'Sections' && 'Sections'}
@@ -2137,7 +2280,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   {activeSection === 'College Subjects' && 'College Subjects'}
                   {activeSection === 'School Year' && 'School Year'}
                 </h1>
-                <p className="text-sm text-slate-600">Welcome back to your administration portal</p>
+                <p className="text-sm text-slate-600">{(activeSection === 'Manage Faculty' || activeSection === 'Manage Teachers') ? `Welcome back to your ${personPlural.toLowerCase()} administration portal` : 'Welcome back to your administration portal'}</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">
@@ -2155,7 +2298,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             {activeSection === 'Enrollment Request' && renderEnrollmentRequestsContent()}
             {activeSection === 'Transactions' && renderTransactionsContent()}
             {activeSection === 'Manage Students' && renderManageStudentsContent()}
-            {activeSection === 'Manage Teachers' && renderManageTeachersContent()}
+            {activeSection === 'Manage Teachers' && renderManageFacultyContent()}
+            {activeSection === 'Manage Faculty' && renderManageFacultyContent()}
             {activeSection === 'SHS Grades' && renderSHSGradesContent()}
             {activeSection === 'College Grades' && renderCollegeGradesContent()}
             {activeSection === 'Sections' && renderSectionsContent()}
@@ -2354,33 +2498,36 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               <div>
                 <h4 className="mb-3">Edit Grades</h4>
                 <div className="space-y-3">
-                  {selectedStudent.grades?.map((grade: any, index: number) => (
+                  {(selectedStudent.grades || []).map((grade: any, index: number) => (
                     <div key={index} className="flex items-center gap-3">
                       <Input 
-                        defaultValue={grade.subject} 
+                        value={grade.subject || ''} 
                         className="flex-1"
                         placeholder="Subject name"
+                        onChange={(e) => handleUpdateGradeField(index, 'subject', e.target.value)}
                       />
                       <Input 
-                        defaultValue={grade.grade} 
+                        value={grade.grade ?? ''} 
                         className="w-24"
                         placeholder="Grade"
                         type="number"
                         step="0.25"
                         min="1"
                         max="5"
+                        onChange={(e) => handleUpdateGradeField(index, 'grade', e.target.value)}
                       />
                       <Button 
                         size="sm" 
                         variant="outline" 
                         className="text-red-600 hover:bg-red-50"
+                        onClick={() => handleRemoveSubject(index)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
-                <Button size="sm" variant="outline" className="mt-3 gap-2">
+                <Button size="sm" variant="outline" className="mt-3 gap-2" onClick={handleAddSubject}>
                   <Plus className="h-4 w-4" />
                   Add Subject
                 </Button>
@@ -2631,6 +2778,113 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   </>
                 ) : (
                   'Add Section'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add School Year Dialog */}
+      <Dialog open={addSchoolYearOpen} onOpenChange={setAddSchoolYearOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add School Year</DialogTitle>
+            <DialogDescription>
+              Create a new school year
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="sy-year">School Year</Label>
+              <Input 
+                id="sy-year" 
+                placeholder="2024-2025" 
+                className="mt-2"
+                value={newSchoolYearForm.school_year}
+                onChange={(e) => setNewSchoolYearForm({ ...newSchoolYearForm, school_year: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="sy-start">Start Date</Label>
+                <Input 
+                  id="sy-start" 
+                  type="date"
+                  className="mt-2"
+                  value={newSchoolYearForm.start_date}
+                  onChange={(e) => setNewSchoolYearForm({ ...newSchoolYearForm, start_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sy-end">End Date</Label>
+                <Input 
+                  id="sy-end" 
+                  type="date"
+                  className="mt-2"
+                  value={newSchoolYearForm.end_date}
+                  onChange={(e) => setNewSchoolYearForm({ ...newSchoolYearForm, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="sy-enroll-start">Enrollment Start</Label>
+                <Input 
+                  id="sy-enroll-start" 
+                  type="date"
+                  className="mt-2"
+                  value={newSchoolYearForm.enrollment_start}
+                  onChange={(e) => setNewSchoolYearForm({ ...newSchoolYearForm, enrollment_start: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="sy-enroll-end">Enrollment End</Label>
+                <Input 
+                  id="sy-enroll-end" 
+                  type="date"
+                  className="mt-2"
+                  value={newSchoolYearForm.enrollment_end}
+                  onChange={(e) => setNewSchoolYearForm({ ...newSchoolYearForm, enrollment_end: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox 
+                id="sy-active" 
+                checked={newSchoolYearForm.is_active}
+                onCheckedChange={(checked) => setNewSchoolYearForm({ ...newSchoolYearForm, is_active: checked === true })}
+              />
+              <Label htmlFor="sy-active" className="cursor-pointer">
+                Set as active school year
+              </Label>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setAddSchoolYearOpen(false);
+                setNewSchoolYearForm({
+                  school_year: '',
+                  start_date: '',
+                  end_date: '',
+                  enrollment_start: '',
+                  enrollment_end: '',
+                  is_active: false
+                });
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600"
+                onClick={() => handleCreateSchoolYear(newSchoolYearForm)}
+                disabled={loadingSection === 'create-school-year'}
+              >
+                {loadingSection === 'create-school-year' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add School Year'
                 )}
               </Button>
             </div>
@@ -3113,15 +3367,15 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Add Teacher Dialog */}
+      {/* Add Faculty Dialog */}
       <Dialog open={addTeacherOpen} onOpenChange={setAddTeacherOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Teacher</DialogTitle>
-            <DialogDescription>
-              Enter teacher information
-            </DialogDescription>
-          </DialogHeader>
+            <DialogHeader>
+              <DialogTitle>{`Add New ${personSingular}`}</DialogTitle>
+              <DialogDescription>
+                {`Enter ${personSingular.toLowerCase()} information`}
+              </DialogDescription>
+            </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label htmlFor="teacher-faculty-id">Faculty ID</Label>
@@ -3213,23 +3467,22 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                     Adding...
                   </>
                 ) : (
-                  'Add Teacher'
+                  `Add ${personSingular}`
                 )}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Teacher Dialog */}
+      {/* Edit Faculty Dialog */}
       <Dialog open={editTeacherOpen} onOpenChange={setEditTeacherOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Teacher</DialogTitle>
-            <DialogDescription>
-              Update teacher information
-            </DialogDescription>
-          </DialogHeader>
+            <DialogHeader>
+              <DialogTitle>{`Edit ${personSingular}`}</DialogTitle>
+              <DialogDescription>
+                {`Update ${personSingular.toLowerCase()} information`}
+              </DialogDescription>
+            </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -3317,7 +3570,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                     Updating...
                   </>
                 ) : (
-                  'Update Teacher'
+                  `Update ${personSingular}`
                 )}
               </Button>
             </div>
@@ -3331,8 +3584,8 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete teacher {selectedStudent?.first_name} {selectedStudent?.last_name}. This action cannot be undone.
-            </AlertDialogDescription>
+                {`This will permanently delete ${personSingular.toLowerCase()} ${selectedStudent?.first_name} ${selectedStudent?.last_name}. This action cannot be undone.`}
+              </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
