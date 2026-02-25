@@ -15,20 +15,28 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Get user from database
-    const users = await query(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
-    );
+    // Get user from database — allow login by username OR student_id
+    let user: any = null;
 
-    if (users.length === 0) {
+    // Try username match first
+    const users = await query('SELECT * FROM users WHERE username = ?', [username]);
+    if (users.length > 0) {
+      user = users[0];
+    } else {
+      // Try student_id lookup and resolve to user
+      const studs = await query('SELECT user_id FROM students WHERE student_id = ?', [username]);
+      if (studs.length > 0 && studs[0].user_id) {
+        const userRows = await query('SELECT * FROM users WHERE id = ?', [studs[0].user_id]);
+        if (userRows.length > 0) user = userRows[0];
+      }
+    }
+
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
-
-    const user = users[0];
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -84,7 +92,7 @@ export const login = async (req: Request, res: Response) => {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { username, password, email, role = 'student' } = req.body;
+    const { username, password, email, role = 'student', student } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -115,6 +123,58 @@ export const register = async (req: Request, res: Response) => {
       [username, hashedPassword, email, role]
     );
 
+    const userId = result.lastInsertRowid;
+
+    // If role is student and student details provided, create student record and link
+    if (role === 'student' && student && typeof student === 'object') {
+      const {
+        student_id,
+        first_name,
+        middle_name,
+        last_name,
+        suffix,
+        student_type,
+        course,
+        year_level,
+        contact_number,
+        address,
+        birth_date,
+        gender
+      } = student as any;
+
+      // Auto-generate student_id when not provided in format YYYY-xxxx (4 digits)
+      let finalStudentId = student_id || null;
+      if (!finalStudentId) {
+        const year = new Date().getFullYear();
+        const prefix = String(year);
+        try {
+          const rows = await query('SELECT student_id FROM students WHERE student_id LIKE ? ORDER BY student_id DESC LIMIT 1', [`${prefix}-%`]);
+          if (rows.length > 0 && rows[0].student_id) {
+            const last = rows[0].student_id as string;
+            const parts = last.split('-');
+            const lastNum = parseInt(parts[1] || '0', 10) || 0;
+            const next = lastNum + 1;
+            finalStudentId = `${prefix}-${String(next).padStart(4, '0')}`;
+          } else {
+            finalStudentId = `${prefix}-0001`;
+          }
+        } catch (e) {
+          // Fallback to timestamp-based id on error
+          const fallbackNum = Math.floor(Math.random() * 9000) + 1000;
+          finalStudentId = `${prefix}-${String(fallbackNum).padStart(4, '0')}`;
+        }
+      }
+
+      await run(
+        `INSERT INTO students (
+          user_id, student_id, first_name, middle_name, last_name, suffix,
+          student_type, course, year_level, contact_number, address, birth_date, gender, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+        [userId, finalStudentId, first_name || null, middle_name || null, last_name || null, suffix || null,
+          student_type || 'New', course || null, year_level || null, contact_number || null, address || null, birth_date || null, gender || null]
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -130,6 +190,35 @@ export const register = async (req: Request, res: Response) => {
       success: false,
       message: 'Server error'
     });
+  }
+};
+
+export const getNextStudentId = async (req: Request, res: Response) => {
+  try {
+    const year = new Date().getFullYear();
+    const prefix = String(year);
+    let finalStudentId = null;
+
+    try {
+      const rows = await query('SELECT student_id FROM students WHERE student_id LIKE ? ORDER BY student_id DESC LIMIT 1', [`${prefix}-%`]);
+      if (rows.length > 0 && rows[0].student_id) {
+        const last = rows[0].student_id as string;
+        const parts = last.split('-');
+        const lastNum = parseInt(parts[1] || '0', 10) || 0;
+        const next = lastNum + 1;
+        finalStudentId = `${prefix}-${String(next).padStart(4, '0')}`;
+      } else {
+        finalStudentId = `${prefix}-0001`;
+      }
+    } catch (e) {
+      const fallbackNum = Math.floor(Math.random() * 9000) + 1000;
+      finalStudentId = `${prefix}-${String(fallbackNum).padStart(4, '0')}`;
+    }
+
+    res.json({ success: true, data: { student_id: finalStudentId } });
+  } catch (error) {
+    console.error('Get next student id error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

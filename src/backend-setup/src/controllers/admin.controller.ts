@@ -55,8 +55,8 @@ export const getStudentById = async (req: AuthRequest, res: Response) => {
       `SELECT s.*, u.username, u.email 
        FROM students s
        LEFT JOIN users u ON s.user_id = u.id
-       WHERE s.id = ?`,
-      [id]
+       WHERE s.id = ? OR s.student_id = ? LIMIT 1`,
+      [id, id]
     );
 
     if (students.length === 0) {
@@ -302,6 +302,34 @@ export const deleteStudent = async (req: AuthRequest, res: Response) => {
       success: false,
       message: 'Server error'
     });
+  }
+};
+
+// Create user accounts for existing students who don't have user accounts yet
+export const createAccountsForExistingStudents = async (req: AuthRequest, res: Response) => {
+  try {
+    // Find students without user_id
+    const students = await query('SELECT * FROM students WHERE user_id IS NULL OR user_id = 0');
+    const created: any[] = [];
+
+    for (const s of students) {
+      const username = s.student_id || `s${s.id}`;
+      const password = (process.env.DEFAULT_STUDENT_PASSWORD || 'password');
+      const bcrypt = require('bcryptjs');
+      const hashed = await bcrypt.hash(password, 10);
+
+      const userResult: any = await run('INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)', [username, hashed, 'student', s.email || null]);
+      const userId = userResult.lastInsertRowid;
+
+      await run('UPDATE students SET user_id = ? WHERE id = ?', [userId, s.id]);
+
+      created.push({ student_id: s.student_id, user_id: userId, username, password });
+    }
+
+    res.json({ success: true, message: `Created ${created.length} accounts`, data: created });
+  } catch (error) {
+    console.error('Create accounts for existing students error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

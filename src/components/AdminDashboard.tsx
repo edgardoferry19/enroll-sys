@@ -220,6 +220,11 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [loadingSection, setLoadingSection] = useState<string | null>(null);
   const [error, setError] = useState<string>('');
 
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestedSubjects, setSuggestedSubjects] = useState<any[]>([]);
+  const [suggestStudent, setSuggestStudent] = useState<any>(null);
+  const [suggestEnrollmentId, setSuggestEnrollmentId] = useState<number | null>(null);
+
   // Role label helpers: switch text between Faculty and Teacher based on active section
   const isFacultySection = activeSection === 'Manage Faculty';
   const personSingular = isFacultySection ? 'Faculty' : 'Teacher';
@@ -904,6 +909,80 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     }
   };
 
+  const handleExportStudents = async () => {
+    try {
+      setLoadingSection('export-students');
+      const { reportsService } = await import('../services/reports.service');
+      const blob = await reportsService.exportStudentsCsv();
+      const url = window.URL.createObjectURL(blob as any);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'students_report.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export students');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleSuggestSubjects = async (student: any) => {
+    try {
+      setSuggestStudent(student);
+      setLoadingSection('suggest-subjects');
+      const { reportsService } = await import('../services/reports.service');
+      const resp = await reportsService.suggestSubjects(student.id || student.student_id || student.studentId);
+      const suggestions = resp.data?.suggestions || resp.suggestions || [];
+      setSuggestedSubjects(suggestions);
+
+      // Fetch student details to get latest enrollment id
+      const studentIdInternal = student.studentId || student.student_id || null;
+      let enrollmentId: number | null = null;
+      if (studentIdInternal) {
+        try {
+          const details = await adminService.getStudentById(studentIdInternal);
+          const enrollments = details.data?.enrollments || details.enrollments || [];
+          if (enrollments.length > 0) {
+            enrollmentId = enrollments[0].id;
+          }
+        } catch (e) {
+          console.warn('Failed to fetch student enrollments', e);
+        }
+      }
+
+      setSuggestEnrollmentId(enrollmentId);
+      setSuggestOpen(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to get suggestions');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
+  const handleAddSuggestedSubject = async (subject: any) => {
+    if (!suggestEnrollmentId) {
+      alert('No enrollment found for this student. Create or select an enrollment first.');
+      return;
+    }
+
+    try {
+      setLoadingSection('add-suggested-subject');
+      await enrollmentService.addSubject(suggestEnrollmentId, subject.id);
+      alert(`Subject ${subject.subject_code} added to enrollment ${suggestEnrollmentId}`);
+      // remove the added suggestion from list
+      setSuggestedSubjects(prev => prev.filter(s => s.id !== subject.id));
+      // refresh dashboard data to reflect changes
+      await fetchDashboardData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add subject');
+    } finally {
+      setLoadingSection(null);
+    }
+  };
+
   const renderDashboardContent = () => (
     <>
       {/* Stats Grid */}
@@ -1365,6 +1444,34 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             <Plus className="h-4 w-4" />
             Add Student
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              try {
+                setLoadingSection('create-accounts');
+                const resp = await adminService.createAccountsForExistingStudents();
+                alert(`Created ${resp.data?.length || resp?.data?.length || 0} accounts.`);
+                await fetchDashboardData();
+              } catch (err: any) {
+                alert(err.message || 'Failed to create accounts');
+              } finally {
+                setLoadingSection(null);
+              }
+            }}
+          >
+            <UserPlus className="h-4 w-4" />
+            Create Accounts
+          </Button>
+            <Button
+              onClick={handleExportStudents}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export Students
+            </Button>
           <Button 
             onClick={() => setRemoveStudentOpen(true)}
             variant="outline"
@@ -1402,6 +1509,15 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                   >
                     <Edit className="h-4 w-4" />
                     Update Status
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleSuggestSubjects(student)}
+                    className="gap-2"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Suggest Subjects
                   </Button>
                 </div>
                 <div className="flex gap-2 mt-2">
@@ -3992,6 +4108,42 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 )}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suggest Subjects Dialog */}
+      <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Suggested Subjects</DialogTitle>
+            <DialogDescription>
+              Suggested subjects for {suggestStudent?.first_name || suggestStudent?.name || suggestStudent?.student_id}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {suggestedSubjects.length === 0 ? (
+              <p className="text-sm text-slate-500">No suggestions available</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {suggestedSubjects.map((s: any) => (
+                  <div key={s.id} className="p-3 border rounded">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{s.subject_code} — {s.subject_name}</p>
+                        <p className="text-xs text-slate-500">Units: {s.units} • {s.course} • Year {s.year_level}</p>
+                      </div>
+                      <div>
+                        <Button size="sm" onClick={() => handleAddSuggestedSubject(s)}>Add</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setSuggestOpen(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -67,6 +67,21 @@ class AuthService {
   }
 
   /**
+   * Get next auto-generated student id from server
+   */
+  async getNextStudentId(): Promise<string> {
+    try {
+      const response = await api.get('/auth/next-student-id');
+      if (response.data && response.data.success) {
+        return response.data.data.student_id;
+      }
+      throw new Error('Could not get next student id');
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
+  /**
    * Get current user profile
    */
   async getProfile(): Promise<ProfileResponse> {

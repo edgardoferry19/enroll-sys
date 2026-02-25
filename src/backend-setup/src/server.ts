@@ -25,6 +25,7 @@ import coursesRoutes from './routes/courses.routes';
 import paymentsRoutes from './routes/payments.routes';
 import curriculumRoutes from './routes/curriculum.routes';
 import cashierRoutes from './routes/cashier.routes';
+import reportsRoutes from './routes/reports.routes';
 
 // Load environment variables
 dotenv.config();
@@ -76,6 +77,7 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/cashier', cashierRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {

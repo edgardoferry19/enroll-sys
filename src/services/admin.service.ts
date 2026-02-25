@@ -93,6 +93,15 @@ class AdminService {
     }
   }
 
+  async createAccountsForExistingStudents(): Promise<any> {
+    try {
+      const response = await api.post('/admin/students/create-accounts');
+      return response.data;
+    } catch (error) {
+      throw new Error(handleApiError(error));
+    }
+  }
+
   /**
    * Get all enrollments with filters
    */

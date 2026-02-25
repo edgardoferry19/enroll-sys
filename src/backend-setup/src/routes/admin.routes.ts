@@ -45,4 +45,8 @@ router.get('/enrollments/:id', authenticate, authorize('admin', 'superadmin', 'd
 router.put('/enrollments/:id/status', authenticate, authorize('admin', 'superadmin', 'registrar'), updateEnrollmentStatus);
 router.put('/enrollments/:id/approve-assessment', authenticate, authorize('admin', 'superadmin'), approveEnrollmentAssessment);
 
+// Create accounts for existing students (admin only)
+import { createAccountsForExistingStudents } from '../controllers/admin.controller';
+router.post('/students/create-accounts', authenticate, authorize('admin', 'superadmin'), createAccountsForExistingStudents);
+
 export default router;
