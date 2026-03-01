@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import ScholarshipPage from './ScholarshipPage';
 import {
   Select,
   SelectContent,
@@ -2066,6 +2067,17 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
               <UserCircle className="h-4 w-4" />
               My Profile
             </button>
+            <button
+              onClick={() => setActiveSection('Scholarships')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
+                activeSection === 'Scholarships'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <GraduationCap className="h-4 w-4" />
+              Scholarships
+            </button>
           </nav>
 
           <div className="p-3 border-t border-slate-200">
@@ -2141,6 +2153,7 @@ export default function StudentDashboard({ onLogout }: StudentDashboardProps) {
             {activeSection === 'Subjects' && renderSubjectsContent()}
             {activeSection === 'My Schedule' && renderScheduleContent()}
             {activeSection === 'My Profile' && renderProfileContent()}
+            {activeSection === 'Scholarships' && <ScholarshipPage />}
             {activeSection === 'Tuition and Fees' && renderTuitionFeesContent()}
             {activeSection === 'Grades' && renderGradesContent && renderGradesContent()}
             {/* Notifications Modal */}

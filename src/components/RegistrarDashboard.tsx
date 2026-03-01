@@ -21,6 +21,7 @@ import {
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
+import RegistrarScholarshipReview from './RegistrarScholarshipReview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
@@ -909,6 +910,7 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
     { name: 'Student Records', icon: Users },
     { name: 'Grades Management', icon: ClipboardCheck },
     { name: 'COR Management', icon: Award },
+    { name: 'Scholarship Applications', icon: Award },
     { name: 'Pending Enrollments', icon: FileText },
     { name: 'Clearances', icon: CheckCircle },
   ];
@@ -982,6 +984,7 @@ export default function RegistrarDashboard({ onLogout }: RegistrarDashboardProps
             {activeSection === 'COR Management' && renderCORManagementContent()}
             {activeSection === 'Clearances' && renderClearanceContent()}
             {activeSection === 'Pending Enrollments' && renderPendingEnrollmentsContent()}
+            {activeSection === 'Scholarship Applications' && <RegistrarScholarshipReview />}
           </div>
         </div>
       </div>

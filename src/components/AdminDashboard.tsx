@@ -60,6 +60,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './ui/alert-dialog';
+import RegistrarScholarshipReview from './RegistrarScholarshipReview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Label } from './ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
@@ -2279,6 +2280,18 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               Transactions
             </button>
 
+            <button
+              onClick={() => setActiveSection('Scholarship Applications')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                activeSection === 'Scholarship Applications'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <GraduationCap className="h-5 w-5" />
+              Scholarship Applications
+            </button>
+
             {/* Faculty moved into Manage submenu; no top-level Faculty button */}
 
             <div className="pt-4">
@@ -2413,6 +2426,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             {activeSection === 'Dashboard' && renderDashboardContent()}
             {activeSection === 'Enrollment Request' && renderEnrollmentRequestsContent()}
             {activeSection === 'Transactions' && renderTransactionsContent()}
+            {activeSection === 'Scholarship Applications' && <RegistrarScholarshipReview />}
             {activeSection === 'Manage Students' && renderManageStudentsContent()}
             {activeSection === 'Manage Teachers' && renderManageFacultyContent()}
             {activeSection === 'Manage Faculty' && renderManageFacultyContent()}
